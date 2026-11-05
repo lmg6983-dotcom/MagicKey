@@ -379,7 +379,9 @@ pub fn parse_duration(raw: &str) -> Option<Dur> {
         any = true;
         pos += c.get(0)?.end();
     }
-    if !any {
+    // 1만 년을 넘는 기간은 계산하지 않는다 (날짜 범위를 넘으면 chrono 가 panic)
+    let days = out.y * 366.0 + out.mo * 31.0 + out.w * 7.0 + out.d + out.h / 24.0 + out.min / 1440.0 + out.s / 86_400.0;
+    if !any || !days.is_finite() || days > 3_660_000.0 {
         return None;
     }
     // 소수: 1.5년 · 2.5시간 → 아래 단위로
@@ -468,7 +470,7 @@ fn short_day(d: D, t: D) -> String {
     if d.year() == t.year() { format!("{}월 {}일 ({})", d.month(), d.day(), WEEKDAY[wd(d) as usize]) } else { day_text(d) }
 }
 fn iso_day(d: D) -> String {
-    d.format("%Y-%m-%d").to_string()
+    format!("{}-{:02}-{:02}", d.year(), d.month(), d.day()) // chrono 의 %Y 는 다섯 자리 해에 + 를 붙인다
 }
 fn clock_text(h: i64, min: i64) -> String {
     format!("{} {}:{min:02}", if h < 12 { "오전" } else { "오후" }, if h % 12 == 0 { 12 } else { h % 12 })
@@ -1090,6 +1092,14 @@ mod tests {
         for q in ["내일 3시 회의", "3일 뒤 출장 준비", "견적서", "1,200 × 3", "12/25", "오늘", "25일", "금", "회의록 정리해줘", "3시 회의", "설날까지", "", "첫 줄\n3주 뒤"] {
             assert_eq!(date_calc(q, now()), None, "{q}");
         }
+    }
+
+    #[test]
+    fn huge_numbers_do_not_panic() {
+        for q in ["10000000년 뒤", "100000000일 뒤", "99999999999시간 뒤", "2026-01-01 + 99999999년", "9999999999999999999999999999일째", "오후 3시 + 99999999999분"] {
+            assert_eq!(date_calc(q, now()), None, "{q}");
+        }
+        eq!(plain, "9999년 뒤", "12025-10-22");
     }
 
     #[test]
