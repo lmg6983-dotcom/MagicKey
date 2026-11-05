@@ -84,8 +84,9 @@ struct QueryOut {
 }
 
 /// 칠 때마다: 계산 · 날짜 계산, 사이트 주소, 묻는 글인가, 앱 · 폴더 · 파일 (mods = 켜 둔 기능)
+///   async: 메인 스레드 밖에서 돈다 (이름 수십만 개를 훑는 동안 창이 굳지 않게)
 #[tauri::command]
-fn query(text: String, mods: Vec<String>, idx: State<Arc<Index>>) -> QueryOut {
+async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>) -> Result<QueryOut, String> {
     let on = |m: &str| mods.iter().any(|x| x == m);
     let text: String = text.chars().take(200).collect();
     let calc = on("calc").then(|| {
@@ -96,26 +97,32 @@ fn query(text: String, mods: Vec<String>, idx: State<Arc<Index>>) -> QueryOut {
     let entries = idx.entries.read().unwrap().clone();
     let limits = (if on("apps") { 4 } else { 0 }, if on("files") { 3 } else { 0 }, if on("files") { 6 } else { 0 });
     let found = index::search(&entries, &text, limits);
-    *idx.shown.lock().unwrap() = found.apps.iter().chain(&found.folders).chain(&found.files).map(|h| h.path.clone()).collect();
-    QueryOut {
+    // 더하기만 한다 (답이 순서가 바뀌어 와도 창에 보이는 줄은 늘 열 수 있게) — 창을 띄울 때 비운다
+    idx.shown.lock().unwrap().extend(found.apps.iter().chain(&found.folders).chain(&found.files).map(|h| h.path.clone()));
+    Ok(QueryOut {
         calc: calc.flatten(),
         site: on("web").then(|| web::site_url(&text)).flatten(),
         question: web::looks_like_question(&text),
         found,
         indexed: entries.len(),
         building: idx.building.load(Ordering::SeqCst),
-    }
+    })
 }
 
+/// 단축키를 못 잡았을 때 창에 띄울 안내
+#[derive(Default)]
+struct Notice(Mutex<Option<String>>);
+
 #[derive(Serialize)]
-struct Sites {
+struct Init {
     web: &'static [web::Site],
     ai: &'static [web::Site],
+    notice: Option<String>,
 }
 
 #[tauri::command]
-fn sites() -> Sites {
-    Sites { web: web::WEB_ENGINES, ai: web::AI_SITES }
+fn init(notice: State<Notice>) -> Init {
+    Init { web: web::WEB_ENGINES, ai: web::AI_SITES, notice: notice.0.lock().unwrap().clone() }
 }
 
 /// 찾은 줄의 할 일: open (열기 · 실행) · reveal (폴더 열기) · copyPath (경로 복사)
@@ -175,7 +182,9 @@ fn toggle(app: &AppHandle) {
     let _ = w.show();
     let _ = w.set_focus();
     let _ = w.emit("magic:show", ());
-    app.state::<Arc<Index>>().touch();
+    let idx = app.state::<Arc<Index>>();
+    idx.shown.lock().unwrap().clear();
+    idx.touch();
 }
 
 fn main() {
@@ -196,10 +205,11 @@ fn main() {
         .setup(move |app| {
             let cache = app.path().app_local_data_dir()?.join("index.tsv");
             app.manage(Index::new(cache));
+            app.manage(Notice::default());
 
             let open = MenuItem::with_id(app, "open", "열기 (Ctrl+Alt+Space)", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "끝내기", true, None::<&str>)?;
-            TrayIconBuilder::new()
+            let tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().cloned().ok_or("아이콘이 없어요")?)
                 .tooltip("MagicKey — Ctrl+Alt+Space")
                 .menu(&Menu::with_items(app, &[&open, &quit])?)
@@ -216,8 +226,12 @@ fn main() {
                 })
                 .build(app)?;
 
-            if let Err(e) = app.global_shortcut().register(hotkey) {
-                eprintln!("Ctrl+Alt+Space 를 다른 프로그램이 쓰고 있어요: {e}"); // 알림 영역 아이콘으로는 열 수 있다
+            // 메모킹 매직키처럼 다른 프로그램이 이미 쓰고 있으면: 창을 한 번 띄워 알리고, 알림 영역 아이콘으로 연다
+            if app.global_shortcut().register(hotkey).is_err() {
+                let msg = "Ctrl+Alt+Space 를 다른 프로그램(메모킹 등)이 쓰고 있어요. 그 프로그램의 단축키를 끄고 MagicKey 를 다시 켜거나, 알림 영역의 ✦ 를 눌러 여세요";
+                *app.state::<Notice>().0.lock().unwrap() = Some(msg.into());
+                let _ = tray.set_tooltip(Some("MagicKey — 단축키를 못 잡았어요. 여기를 눌러 열기"));
+                toggle(app.handle());
             }
             Ok(())
         })
@@ -226,7 +240,7 @@ fn main() {
                 let _ = w.hide(); // 다른 곳을 누르면 숨는다
             }
         })
-        .invoke_handler(tauri::generate_handler![query, sites, act, copy, open_web, hide])
+        .invoke_handler(tauri::generate_handler![query, init, act, copy, open_web, hide])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }

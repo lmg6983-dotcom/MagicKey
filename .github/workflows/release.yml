@@ -1,0 +1,25 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p magickey-core
+      - name: Build installer
+        working-directory: app
+        run: npx --yes @tauri-apps/cli@2 build
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: MagicKey ${{ github.ref_name }}
+          body_path: docs/releases/${{ github.ref_name }}.md
+          files: target/release/bundle/nsis/*.exe

@@ -26,7 +26,7 @@ const store = {
 let off = new Set(store.get('magic.off') ?? []); // 캡슐로 꺼 둔 기능
 const isOn = (id) => !off.has(id);
 
-let sites = { web: [], ai: [] };
+let sites = { web: [], ai: [], notice: null }; // notice: 단축키를 못 잡았을 때 안내
 let res = null; // 마지막 query 결과
 let rows = [];
 let selected = 0;
@@ -58,6 +58,9 @@ const el = (tag, cls, text) => {
   return e;
 };
 
+// 주소로 질문을 못 넘기는 사이트(Gemini)는 단추에 미리 알린다 — 브라우저가 열리면 이 창은 숨어 안내를 못 본다
+const siteLabel = (s) => (s.paste ? `${s.name} (복사해 열기)` : s.name);
+
 /** 이 줄에서 할 수 있는 일 (첫 번째가 Enter) */
 function actionsFor(r) {
   switch (r.kind) {
@@ -67,7 +70,7 @@ function actionsFor(r) {
     case 'calc': return [{ id: 'copy', label: '결과 복사' }, { id: 'copyExpr', label: '식까지 복사', text: true }];
     case 'date': return [{ id: 'copy', label: '결과 복사' }, { id: 'copyIso', label: `${r.plain} 복사` }, { id: 'copyExpr', label: '쓴 글까지 복사', text: true }];
     case 'site': return [{ id: 'open', label: '사이트 열기' }];
-    case 'web': case 'ai': return r.sites.map((s) => ({ id: s.id, label: s.name, text: true }));
+    case 'web': case 'ai': return r.sites.map((s) => ({ id: s.id, label: siteLabel(s), text: true }));
     default: return [];
   }
 }
@@ -145,7 +148,7 @@ function row(r, index, query) {
   } else if (r.kind === 'web' || r.kind === 'ai') {
     ico.append(svg(r.kind));
     t.textContent = r.kind === 'web' ? '웹에서 찾기' : 'AI에게 묻기';
-    s.textContent = r.sites.map((x) => x.name).join(', ');
+    s.textContent = r.sites.map(siteLabel).join(', ');
   } else {
     ico.textContent = r.kind === 'folder' ? '📁' : r.kind === 'app' ? '🚀' : '📄';
     t.append(highlighted(r.name, query));
@@ -215,11 +218,14 @@ function render() {
       res.files.forEach((f) => put({ kind: 'file', mod: 'files', ...f }));
     }
     if (res.more > 0) note(`다른 ${res.more.toLocaleString()}건은 글을 더 써서 좁혀 보세요`);
-    if ((isOn('apps') || isOn('files')) && !res.indexed) note(res.building ? '프로그램 · 파일 목록을 만드는 중이에요. 처음 한 번만, 잠시 뒤 찾아져요' : '프로그램 · 파일 목록이 비어 있어요');
+    const searched = isOn('apps') || isOn('files');
+    const found = res.calc || res.site || res.apps.length || res.folders.length || res.files.length;
+    if (searched && !res.indexed) note(res.building ? '프로그램 · 파일 목록을 만드는 중이에요. 처음 한 번만, 잠시 뒤 찾아져요' : '프로그램 · 파일 목록이 비어 있어요');
+    else if (searched && !found) note(`'${query.slice(0, 30)}'와 맞는 앱 · 파일이 없어요`); // 웹 · AI 줄 위에
     if (isOn('web')) put({ kind: 'web', mod: 'web', sites: sites.web });
     if (!res.question) ask();
-    if (!rows.length && !nodes.length) note(`'${query.slice(0, 30)}'와 맞는 결과가 없어요`);
-  }
+    if (!rows.length && !searched) note(`'${query.slice(0, 30)}'와 맞는 결과가 없어요`);
+  } else if (sites.notice) note(sites.notice);
   resultsEl.replaceChildren(...nodes);
   select(Math.min(selected, Math.max(0, rows.length - 1)), false);
   fit();
@@ -281,6 +287,8 @@ function fit() {
 }
 
 async function search() {
+  pending = false;
+  clearTimeout(searchTimer);
   const my = ++seq;
   const text = input.value;
   if (!text.trim()) {
@@ -324,8 +332,10 @@ async function run(i, act = 0) {
 }
 
 let searchTimer = 0;
+let pending = false; // 친 글을 아직 찾지 않았다 (Enter 가 지난 글의 결과를 실행하지 않게)
 input.addEventListener('input', () => {
   selected = 0;
+  pending = true;
   clearTimeout(searchTimer);
   searchTimer = setTimeout(search, 60);
   clearBtn.hidden = !input.value;
@@ -371,8 +381,7 @@ input.addEventListener('keydown', (e) => {
     updateHint();
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    clearTimeout(searchTimer);
-    if (rows.length) run(selected, activeAct);
+    (pending ? search() : Promise.resolve()).then(() => rows.length && run(selected, activeAct));
   }
 });
 
@@ -387,7 +396,7 @@ function onShow() {
 }
 
 (async () => {
-  sites = await invoke('sites').catch(() => sites);
+  sites = await invoke('init').catch(() => sites);
   renderModules();
   render();
   await listen('magic:show', onShow);
