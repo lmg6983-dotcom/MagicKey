@@ -45,7 +45,9 @@
 
 ## 설치
 
-[Actions](https://github.com/lmg6983-dotcom/MagicKey/actions/workflows/ci.yml) 의 최근 빌드에서 `MagicKey-setup` 을 받아 실행하세요.
+[Releases](https://github.com/lmg6983-dotcom/MagicKey/releases/latest) 에서 `MagicKey_x.y.z_x64-setup.exe` 를 받아 실행하세요. 관리자 권한은 필요 없어요.
+
+> 메모킹과 함께 쓰면 단축키가 겹쳐요. 단축키를 못 잡으면 처음 켤 때 알려 주고, 알림 영역의 ✦ 로 열 수 있어요.
 
 ## 빌드
 
