@@ -1,0 +1,11 @@
+[package]
+name = "magickey-core"
+description = "매직키의 계산 · 날짜 계산 · 파일 색인 · 웹 검색 (UI 없는 순수 로직)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+fancy-regex = "0.14"
+serde = { version = "1", features = ["derive"] }
