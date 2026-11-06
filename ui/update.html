@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>MagicKey 업데이트</title>
+  <link rel="stylesheet" href="magic.css" />
+  <link rel="stylesheet" href="update.css" />
+</head>
+<body>
+  <!-- 메모킹 업데이트 창과 같은 흐름: 바뀐 점 → 받기(진행률) → 설치하고 다시 켜기 / 나중에 -->
+  <main class="upd" aria-labelledby="upd-title">
+    <header class="upd-head">
+      <span class="upd-badge" aria-hidden="true">✦</span>
+      <div>
+        <h1 id="upd-title">업데이트 확인 중</h1>
+        <p class="upd-version" id="upd-version"></p>
+      </div>
+    </header>
+    <section id="upd-notes-box" hidden>
+      <h2 class="upd-notes-title" id="upd-notes-title">바뀐 점</h2>
+      <div class="upd-notes" id="upd-notes" tabindex="0" role="region" aria-labelledby="upd-notes-title"></div>
+    </section>
+    <div class="upd-progress" id="upd-progress" hidden>
+      <div class="upd-bar"><span id="upd-bar-fill"></span></div>
+      <small id="upd-progress-text" role="status"></small>
+    </div>
+    <p class="upd-msg" id="upd-msg" role="status"></p>
+    <div class="upd-actions">
+      <button type="button" class="upd-btn" id="upd-later">닫기</button>
+      <button type="button" class="upd-btn primary" id="upd-go" autofocus>다시 확인</button>
+    </div>
+  </main>
+  <script src="update.js"></script>
+</body>
+</html>

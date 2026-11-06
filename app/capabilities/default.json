@@ -1,12 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "매직키 창: 크기 맞추기 · 끌어 옮기기 · 숨기기",
-  "windows": ["main"],
+  "description": "매직키 창: 크기 맞추기 · 끌어 옮기기 · 숨기기 / 업데이트 창",
+  "windows": ["main", "update"],
   "permissions": [
     "core:default",
     "core:window:allow-set-size",
-    "core:window:allow-start-dragging",
-    "core:window:allow-hide"
+    "core:window:allow-outer-position",
+    "core:window:allow-set-position",
+    "core:window:allow-hide",
+    "core:window:allow-close"
   ]
 }

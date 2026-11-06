@@ -314,46 +314,158 @@ struct TrayMenu {
 
 // ---------- 자동 업데이트 ----------
 //   GitHub Release 의 latest.json 을 본다 (서명이 맞는 설치 파일만). 켜고 1분 뒤 · 6시간마다 조용히 확인하고,
-//   새 버전이 있으면 알림 영역 메뉴에 "v… 으로 업데이트" — 누르면 받아서 설치하고 다시 켠다
+//   새 버전이 있으면 업데이트 창을 띄운다 (바뀐 점 → 받기 · 진행률 → 설치하고 다시 켜기 — 메모킹 업데이트 창과 같은 흐름).
+//   알림 영역 메뉴 '업데이트 확인' 도 이 창을 연다
 
-/// 찾아 둔 새 버전 (누르면 설치)
-#[derive(Default)]
-struct PendingUpdate(Mutex<Option<Update>>);
-
-fn update_text(app: &AppHandle, text: &str) {
-    let _ = app.state::<TrayMenu>().update.set_text(text);
+/// 업데이트 창이 그리는 지금 상태
+#[derive(Clone, Serialize)]
+struct UpdState {
+    /// idle · checking · latest · available · downloading · error
+    status: &'static str,
+    current: &'static str,
+    version: Option<String>,
+    notes: Option<String>,
+    percent: u8,
+    message: Option<String>,
 }
 
-/// 새 버전 확인 — 있으면 메뉴에 띄워 둔다. 확인하지 못한 것은 손으로 눌렀을 때만 알린다 (조용한 확인은 메뉴를 그대로)
-async fn check_update(app: AppHandle, by_hand: bool) {
+impl Default for UpdState {
+    fn default() -> Self {
+        UpdState { status: "idle", current: env!("CARGO_PKG_VERSION"), version: None, notes: None, percent: 0, message: None }
+    }
+}
+
+#[derive(Default)]
+struct Updates {
+    /// 찾아 둔 새 버전 (받기를 누르면 설치)
+    found: Mutex<Option<Update>>,
+    state: Mutex<UpdState>,
+    /// '나중에' 를 누른 버전 — 조용한 확인에서는 창을 다시 띄우지 않는다 (MagicKey 를 다시 켜면 잊음)
+    later: Mutex<Option<String>>,
+}
+
+/// 상태를 바꾸고 업데이트 창 · 알림 영역 메뉴에 알린다
+fn set_update(app: &AppHandle, f: impl FnOnce(&mut UpdState)) -> UpdState {
+    let updates = app.state::<Updates>();
+    let st = {
+        let mut st = updates.state.lock().unwrap();
+        f(&mut st);
+        st.clone()
+    };
+    let text = match (st.status, &st.version) {
+        ("available", Some(v)) => format!("✨ v{v} 으로 업데이트…"),
+        ("downloading", Some(v)) => format!("v{v} 받는 중 {}%", st.percent),
+        _ => format!("업데이트 확인… (v{})", st.current),
+    };
+    let _ = app.state::<TrayMenu>().update.set_text(text);
+    let _ = app.emit_to("update", "update:state", &st);
+    st
+}
+
+/// 새 버전 확인. 조용한 확인은 '확인 중' 을 보이지 않고, 확인하지 못해도 지난 상태를 그대로 둔다
+async fn check_update(app: &AppHandle, by_hand: bool) -> UpdState {
+    let before = app.state::<Updates>().state.lock().unwrap().clone();
+    if before.status == "downloading" {
+        return before;
+    }
+    if by_hand {
+        set_update(app, |s| s.status = "checking");
+    }
     let found = match app.updater() {
         Ok(u) => u.check().await,
         Err(e) => Err(e),
     };
     match found {
         Ok(Some(u)) => {
-            update_text(&app, &format!("✨ v{} 으로 업데이트", u.version));
+            let (version, notes) = (u.version.clone(), u.body.clone());
+            *app.state::<Updates>().found.lock().unwrap() = Some(u);
             if let Some(tray) = app.tray_by_id("main") {
-                let _ = tray.set_tooltip(Some(format!("MagicKey — 새 버전 v{} 이 있어요 (✦ 오른쪽 클릭 › 설정)", u.version)));
+                let _ = tray.set_tooltip(Some(format!("MagicKey — 새 버전 v{version} 이 있어요")));
             }
-            *app.state::<PendingUpdate>().0.lock().unwrap() = Some(u);
+            set_update(app, |s| *s = UpdState { status: "available", version: Some(version), notes, ..UpdState::default() })
         }
-        Ok(None) => update_text(&app, &format!("최신 버전이에요 (v{})", env!("CARGO_PKG_VERSION"))),
-        Err(_) if by_hand => update_text(&app, "업데이트를 확인하지 못했어요 — 눌러서 다시"),
-        Err(_) => {}
+        Ok(None) => {
+            *app.state::<Updates>().found.lock().unwrap() = None;
+            set_update(app, |s| *s = UpdState { status: "latest", ..UpdState::default() })
+        }
+        Err(_) if !by_hand => set_update(app, |s| *s = before),
+        Err(e) => set_update(app, |s| {
+            s.status = "error";
+            s.message = Some(format!("업데이트를 확인하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요 ({e})"));
+        }),
     }
 }
 
-/// 메뉴를 눌렀을 때: 찾아 둔 새 버전이 있으면 설치 (설치 파일이 MagicKey 를 끄고 새로 켠다), 없으면 확인
-async fn update_clicked(app: AppHandle) {
-    let pending = app.state::<PendingUpdate>().0.lock().unwrap().take();
-    let Some(u) = pending else {
-        update_text(&app, "업데이트 확인 중…");
-        return check_update(app, true).await;
+/// 업데이트 창 — 이미 있으면 앞으로
+fn open_update(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("update") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let _ = tauri::WebviewWindowBuilder::new(app, "update", tauri::WebviewUrl::App("update.html".into()))
+        .title("MagicKey 업데이트")
+        .inner_size(460.0, 440.0)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .center()
+        .build();
+}
+
+#[tauri::command]
+fn update_state(u: State<Updates>) -> UpdState {
+    u.state.lock().unwrap().clone()
+}
+
+#[tauri::command]
+async fn update_check(app: AppHandle) -> UpdState {
+    check_update(&app, true).await
+}
+
+/// 받아서 설치 — 설치 파일이 MagicKey 를 끄고 새 버전을 켠다 (진행률은 update:state 로)
+#[tauri::command]
+async fn update_install(app: AppHandle) -> Result<(), String> {
+    let Some(u) = app.state::<Updates>().found.lock().unwrap().clone() else {
+        return Err("받을 새 버전이 없어요. 다시 확인해 주세요".into());
     };
-    update_text(&app, &format!("v{} 받는 중…", u.version));
-    if let Err(e) = u.download_and_install(|_, _| {}, || {}).await {
-        update_text(&app, &format!("업데이트하지 못했어요 ({e}) — 눌러서 다시"));
+    set_update(&app, |s| {
+        s.status = "downloading";
+        s.percent = 0;
+        s.message = None;
+    });
+    let (mut got, mut shown) = (0u64, 0u8);
+    let done = u
+        .download_and_install(
+            |chunk, total| {
+                got += chunk as u64;
+                let p = total.filter(|t| *t > 0).map_or(0, |t| (got * 100 / t).min(100) as u8);
+                if p != shown {
+                    shown = p;
+                    set_update(&app, |s| s.percent = p);
+                }
+            },
+            || {},
+        )
+        .await;
+    if let Err(e) = done {
+        set_update(&app, |s| {
+            s.status = "error";
+            s.message = Some(format!("업데이트하지 못했어요 ({e}). 다시 눌러 주세요"));
+        });
+        return Err(e.to_string());
+    }
+    Ok(())
+}
+
+/// '나중에' — 이 버전은 조용한 확인에서 다시 묻지 않는다
+#[tauri::command]
+fn update_later(app: AppHandle) {
+    let u = app.state::<Updates>();
+    *u.later.lock().unwrap() = u.state.lock().unwrap().version.clone();
+    if let Some(w) = app.get_webview_window("update") {
+        let _ = w.close();
     }
 }
 
@@ -613,21 +725,22 @@ fn main() {
                 .collect::<tauri::Result<Vec<_>>>()?;
             let autostart = CheckMenuItem::with_id(app, "autostart", "Windows 시작할 때 켜기", true, app.autolaunch().is_enabled().unwrap_or(false), None::<&str>)?;
             let reindex = MenuItem::with_id(app, "reindex", "파일 목록 새로 만들기", true, None::<&str>)?;
-            let update = MenuItem::with_id(app, "update", format!("업데이트 확인 (v{})", env!("CARGO_PKG_VERSION")), true, None::<&str>)?;
+            let update = MenuItem::with_id(app, "update", format!("업데이트 확인… (v{})", env!("CARGO_PKG_VERSION")), true, None::<&str>)?;
             let sep = || PredefinedMenuItem::separator(app);
             let feats = Submenu::with_items(app, "기능", true, &mods.iter().map(|m| m as &dyn tauri::menu::IsMenuItem<Wry>).collect::<Vec<_>>())?;
             let settings = Submenu::with_items(app, "설정", true, &[&hotkey_item, &feats, &sep()?, &autostart, &reindex, &sep()?, &update])?;
             let quit = MenuItem::with_id(app, "quit", "끝내기", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &sep()?, &settings, &sep()?, &quit])?;
             app.manage(TrayMenu { open, update, hotkey: hotkey_item, mods });
-            app.manage(PendingUpdate::default());
-            // 켜고 1분 뒤 · 그 뒤 6시간마다 조용히 확인 (로그인 직후 네트워크가 늦게 잡혀도 되게)
+            app.manage(Updates::default());
+            // 켜고 1분 뒤 · 그 뒤 6시간마다 조용히 확인 (로그인 직후 네트워크가 늦게 잡혀도 되게) — 새 버전이면 창을 띄운다 ('나중에' 한 버전은 빼고)
             let h = app.handle().clone();
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_secs(60));
                 loop {
-                    if h.state::<PendingUpdate>().0.lock().unwrap().is_none() {
-                        tauri::async_runtime::block_on(check_update(h.clone(), false));
+                    let st = tauri::async_runtime::block_on(check_update(&h, false));
+                    if st.status == "available" && *h.state::<Updates>().later.lock().unwrap() != st.version {
+                        open_update(&h);
                     }
                     std::thread::sleep(Duration::from_secs(6 * 3600));
                 }
@@ -656,7 +769,12 @@ fn main() {
                     }
                     "quit" => app.exit(0),
                     "update" => {
-                        tauri::async_runtime::spawn(update_clicked(app.clone()));
+                        open_update(app);
+                        // 찾아 둔 새 버전이 없으면 창을 연 김에 확인 (받는 중이면 그대로)
+                        if app.state::<Updates>().found.lock().unwrap().is_none() {
+                            let a = app.clone();
+                            tauri::async_runtime::spawn(async move { check_update(&a, true).await });
+                        }
                     }
                     id => {
                         if let Some(m) = id.strip_prefix("mod:") {
@@ -691,11 +809,11 @@ fn main() {
             Ok(())
         })
         .on_window_event(|w, e| {
-            if let WindowEvent::Focused(false) = e {
-                let _ = w.hide(); // 다른 곳을 누르면 숨는다
+            if let (WindowEvent::Focused(false), "main") = (e, w.label()) {
+                let _ = w.hide(); // 다른 곳을 누르면 숨는다 (업데이트 창은 그대로)
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }
