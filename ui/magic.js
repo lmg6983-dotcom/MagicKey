@@ -68,7 +68,7 @@ const siteLabel = (s) => (s.paste ? `${s.name} (복사해 열기)` : s.name);
 /** 이 줄에서 할 수 있는 일 (첫 번째가 Enter) */
 function actionsFor(r) {
   switch (r.kind) {
-    case 'new': return [{ id: 'save', label: '저장', text: true }, { id: 'saveOpen', label: '저장하고 열기', key: 'Ctrl+Enter', text: true }];
+    case 'new': case 'remind': return [{ id: 'save', label: '저장', text: true }, { id: 'saveOpen', label: '저장하고 열기', key: 'Ctrl+Enter', text: true }];
     case 'memo': return [{ id: 'openMemo', label: '메모킹에서 열기' }];
     case 'app': return [{ id: 'open', label: '실행' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }];
     case 'folder': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '위 폴더에서 보기', key: 'Ctrl+Shift+E' }];
@@ -154,6 +154,10 @@ function row(r, index, query) {
     ico.textContent = '✚';
     t.textContent = '새 메모로 저장';
     s.textContent = query;
+  } else if (r.kind === 'remind') {
+    ico.textContent = '⏰';
+    t.textContent = '알림 맞춰 저장';
+    s.textContent = '글 속 날짜 · 시각에 메모킹이 알림을 맞춰요';
   } else if (r.kind === 'memo') {
     ico.textContent = r.locked ? '🔒' : '📝';
     t.append(highlighted(r.title, query));
@@ -225,6 +229,7 @@ function render() {
   if (recording) note(`새 단축키를 누르세요 (Ctrl · Alt · Win 과 함께, 예: Ctrl+Shift+Space). 지금: ${sites.hotkey} · Esc 취소`);
   else if (query && res) {
     if (res.newMemo) put({ kind: 'new', mod: 'memo' }); // 메모킹 매직키처럼 맨 위 (Enter 로 바로 저장)
+    if (res.remind) put({ kind: 'remind', mod: 'memo' }); // 내일 3시 치과 → 그때 알림
     if (res.calc) put({ ...res.calc, mod: 'calc', text: query });
     if (res.site) put({ kind: 'site', mod: 'site', url: res.site });
     const ask = () => isOn('ai') && put({ kind: 'ai', mod: 'ai', sites: sites.ai });
@@ -344,8 +349,8 @@ async function run(i, act = 0) {
       return;
     }
     let msg;
-    if (r.kind === 'new') {
-      msg = await invoke('new_memo', { text: input.value, open: a.id === 'saveOpen' });
+    if (r.kind === 'new' || r.kind === 'remind') {
+      msg = await invoke('new_memo', { text: input.value, open: a.id === 'saveOpen', remind: r.kind === 'remind' });
       input.value = ''; // 저장한 글은 다음에 열 때 남기지 않는다
     } else if (r.kind === 'memo') msg = await invoke('open_memo', { id: r.id });
     else if (r.kind === 'site') msg = await invoke('open_web', { kind: 'site', site: '', text: r.url });

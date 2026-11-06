@@ -133,6 +133,8 @@ struct QueryOut {
     /// '새 메모' 줄을 보여 줄까 (메모킹이 알아듣고, 기능을 켜 둠)
     #[serde(rename = "newMemo")]
     new_memo: bool,
+    /// '알림 맞춰 저장' 줄도 (첫 줄에 날짜 같은 말, 날짜 계산 글이 아님)
+    remind: bool,
     #[serde(rename = "memoMore")]
     memo_more: usize,
     #[serde(flatten)]
@@ -152,6 +154,8 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
             .map(|answer| Calc { kind: "date", answer })
             .or_else(|| calc::calc(&text).map(|answer| Calc { kind: "calc", answer }))
     });
+    let date_calc = calc.as_ref().is_some_and(|c| c.as_ref().is_some_and(|c| c.kind == "date"));
+    let new_memo = on("memo") && notes.can_make.load(Ordering::SeqCst);
     let (memos, memo_more) = memo::search(&notes.list.read().unwrap().clone(), &text, if on("notes") { 4 } else { 0 });
     notes.shown.lock().unwrap().extend(memos.iter().map(|m| m.id.clone()));
     let entries = idx.entries.read().unwrap().clone();
@@ -164,7 +168,8 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
         site: on("web").then(|| web::site_url(&text)).flatten(),
         question: web::looks_like_question(&text),
         memos,
-        new_memo: on("memo") && notes.can_make.load(Ordering::SeqCst),
+        new_memo,
+        remind: new_memo && !date_calc && memo::mentions_date(&text),
         memo_more,
         found,
         indexed: entries.len(),
@@ -279,9 +284,9 @@ fn sync_modules(off: Vec<String>, menu: State<TrayMenu>) {
     }
 }
 
-/// 새 메모 — 글을 임시 폴더의 magickey-*.txt 로 쓰고 메모킹에게 `--new-memo-file=` 로 넘긴다 (메모 파일은 메모킹만 쓴다)
+/// 새 메모 (remind: 첫 줄 날짜로 알림도) — 글을 임시 폴더의 magickey-*.txt 로 쓰고 메모킹에게 `--new-memo-file=` 로 넘긴다 (메모 파일은 메모킹만 쓴다)
 #[tauri::command]
-fn new_memo(text: String, open: bool, notes: State<Arc<Memos>>) -> Result<String, String> {
+fn new_memo(text: String, open: bool, remind: bool, notes: State<Arc<Memos>>) -> Result<String, String> {
     let (Some(exe), true) = (&notes.exe, notes.can_make.load(Ordering::SeqCst)) else {
         return Err("메모킹을 업데이트하면 새 메모를 만들 수 있어요".into());
     };
@@ -296,6 +301,9 @@ fn new_memo(text: String, open: bool, notes: State<Arc<Memos>>) -> Result<String
     cmd.arg(format!("--new-memo-file={}", file.display()));
     if open {
         cmd.arg("--open-new");
+    }
+    if remind {
+        cmd.arg("--remind"); // 메모킹이 첫 줄의 날짜를 읽어 알림을 맞춘다
     }
     cmd.spawn().map_err(|e| {
         let _ = std::fs::remove_file(&file);

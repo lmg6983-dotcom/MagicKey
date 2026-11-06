@@ -65,7 +65,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-row { display: flex; align-items: center; gap: 11px; min-height: 38px; padding: 6px 10px; border-radius: 10px; cursor: pointer; }
 .magic-row[aria-selected="true"] { background: var(--sel); }
 .magic-row .ico { flex: none; width: 24px; height: 24px; display: grid; place-items: center; font-size: 15px; border-radius: 7px; }
-.magic-row:is(.kind-new, .kind-calc, .kind-date, .kind-site, .kind-web, .kind-ai) .ico { background: color-mix(in srgb, var(--mod) 15%, transparent); color: color-mix(in srgb, var(--mod) 78%, #000); font-weight: 800; }
+.magic-row:is(.kind-new, .kind-remind, .kind-calc, .kind-date, .kind-site, .kind-web, .kind-ai) .ico { background: color-mix(in srgb, var(--mod) 15%, transparent); color: color-mix(in srgb, var(--mod) 78%, #000); font-weight: 800; }
 .magic-row .ico svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .magic-row .txt { min-width: 0; flex: 1; }
 .magic-row .t { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

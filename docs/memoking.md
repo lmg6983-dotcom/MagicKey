@@ -12,7 +12,7 @@
 | MagicKey → 메모킹 설정 | 메모 폴더 위치 | `%APPDATA%\MemoKing\settings.json` 의 `vaultPath`. 비어 있으면 `문서\메모킹` |
 | MagicKey → 메모 폴더 | 메모 찾기 | `*.md` 를 **읽기만** (맨 위 `_memoking` · `attachments` 폴더, `.` · `~$` 로 시작하는 파일은 뺌) |
 | MagicKey → 메모킹 | 메모 열기 | `%LOCALAPPDATA%\Programs\memoking\MemoKing.exe --open-memo=<id>` (꺼져 있으면 켜면서 연다) |
-| MagicKey → 메모킹 | 새 메모 | `MemoKing.exe --new-memo-file=%TEMP%\magickey-*.txt [--open-new]` — 메모킹 **0.77.0~** |
+| MagicKey → 메모킹 | 새 메모 | `MemoKing.exe --new-memo-file=%TEMP%\magickey-*.txt [--open-new] [--remind]` — 메모킹 **0.77.0~** |
 
 - 메모 파일 모양: `---` 머리말(`id` · `updated` …) `---` + 마크다운 본문. 첫 줄이 제목이에요.
 - `id` 가 없는 파일은 메모킹이 아직 정리하지 않은 파일이라 건너뛰어요.
@@ -22,12 +22,14 @@
 - 새 메모: MagicKey 가 글을 `%TEMP%\magickey-<번호>.txt` 로 쓰고 넘기면, 메모킹이 읽어 메모로 만들고 그 파일을 지워요.
   - 메모킹은 **임시 폴더 바로 아래의 1MB 이하 `magickey-*.txt`** 만 받아요 (아무 파일이나 메모로 읽지 않게).
   - `--open-new` 가 있으면 만들고 바로 열고, 없으면 "새 메모를 만들었어요" 알림만 띄워요.
+  - `--remind` 가 있으면 메모킹이 첫 줄의 첫 날짜(내일 오후 3시 · 다음 주 화요일 …)를 읽어 그때 알림을 맞춰요. 못 읽으면 알림 없이 저장.
+  - 날짜를 정확히 읽는 일은 메모킹(`findDates`) 한 곳에서만 해요. MagicKey 는 날짜 같은 말이 보이면 "알림 맞춰 저장" 줄을 띄우기만 해요.
   - MagicKey 는 메모킹 설정의 `seenVersion`(마지막으로 켜진 버전)이 0.77.0 보다 낮으면 "새 메모" 줄을 숨겨요.
 
 ## 🛣️ 로드맵
 
 - [x] **1단계** — MagicKey 에서 메모 찾기 · 메모킹으로 열기 (메모킹은 고칠 것 없음)
-- [x] **2단계** — 새 메모 만들기: 메모킹에 `--new-memo-file=<임시 파일>` 인자를 더하고, MagicKey 의 "새 메모" 줄(맨 위, Enter 저장 · Ctrl+Enter 저장하고 열기)이 그걸 불러요
+- [x] **2단계** — 새 메모 만들기: 메모킹에 `--new-memo-file=<임시 파일>` 인자를 더하고, MagicKey 의 "새 메모" 줄(맨 위, Enter 저장 · Ctrl+Enter 저장하고 열기)과 "알림 맞춰 저장" 줄이 그걸 불러요
 - [ ] **3단계** — 메모킹 안의 매직키를 걷어내요. 메모킹에서 쓰던 매직키 단축키 · 기능 설정은 MagicKey 가 처음 켜질 때 한 번 옮겨 와요
   - 🤖 **매직 에이전트**(이 PC 의 카나나2 AI)와 🏢 **OPMS 검색**(사내망)은 MagicKey 로 옮기고, **기본값은 꺼짐**
 - [ ] **4단계** — 이 문서를 메모킹 리포에도 두고, MagicKey 를 먼저 · 메모킹을 그다음에 내요 (매직키가 하나도 없는 때가 없게)

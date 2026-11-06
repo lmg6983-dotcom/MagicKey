@@ -69,6 +69,23 @@ static INLINE: LazyLock<[(Regex, &'static str); 6]> = LazyLock::new(|| {
     ]
 });
 
+// 날짜 · 시각처럼 보이는 말 — 정확히 읽는 일은 메모킹(findDates)이 한다. 여기서는 "알림 맞춰 저장" 줄을 보여 줄지만
+//   shortcut: 메모킹이 못 읽는 말에도 줄이 뜰 수 있다 (그때 메모킹은 알림 없이 저장), 틀리게 뜨는 일이 잦으면 메모킹에 묻는 길로
+static DATE_HINT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"(?i)오늘|내일|모레|글피|이번\s*주|다음\s*주|다음\s*달|[월화수목금토일]요일|\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\s*일\s*(?:에|까지)",
+        r"|\d{1,2}/\d{1,2}|\d{1,2}:\d{2}|(?:\d{1,2}|열한|열두|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*시(?![간작])",
+        r"|오전|오후|저녁|새벽|이틀|사흘|나흘|\d+\s*(?:일|주|달|개월)\s*(?:뒤|후)|매일|매주|매달|매년",
+        r"|\btomorrow\b|\btonight\b|\bnext\s+(?:week|month|mon|tue|wed|thu|fri|sat|sun)|\d{1,2}\s*(?:am|pm)\b"
+    ))
+    .unwrap()
+});
+
+/// 첫 줄에 날짜 · 시각 같은 말이 있는가 ("내일 3시 치과" → 알림 맞춰 저장 줄)
+pub fn mentions_date(text: &str) -> bool {
+    DATE_HINT.is_match(text.lines().next().unwrap_or("")).unwrap_or(false)
+}
+
 /// 머리말의 `키: 값` 하나 (따옴표는 뗀다)
 fn front_value<'a>(front: &'a str, key: &str) -> Option<&'a str> {
     front.lines().find_map(|l| {
@@ -268,6 +285,16 @@ mod tests {
         assert_eq!((hits[1].snippet.as_str(), more), ("견적서 보내기", 1));
         assert_eq!(search(&v, "ㅈㅂㄱ", 5).0[0].id, "old", "제목 초성");
         assert!(search(&v, "견적서 없는말", 5).0.is_empty(), "낱말이 모두 있어야");
+    }
+
+    #[test]
+    fn date_words() {
+        for t in ["내일 오후 3시 치과", "다음 주 화요일 회의", "11월 7일 보고", "15:30 전화", "세 시 반에 보자", "3일 뒤 마감", "meet tomorrow"] {
+            assert!(mentions_date(t), "{t}");
+        }
+        for t in ["장보기 목록", "세 시간 걸림", "3시간 회의 정리", "시작 버튼", "그냥 메모\n내일 3시"] {
+            assert!(!mentions_date(t), "{t}");
+        }
     }
 
     #[test]
