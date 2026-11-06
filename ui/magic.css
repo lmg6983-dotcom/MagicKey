@@ -11,7 +11,9 @@
   --ok-text: #1e7a45;
   --err-text: #b42318;
   --focus-ring: #111;
-  --shadow: 0 18px 50px rgba(0, 0, 0, 0.26), 0 0 0 1px rgba(0, 0, 0, 0.07);
+  /* 창 가장자리(10px) 안에서 끝나는 그림자 — 넘치면 잘린 회색 띠가 창 밖 화면과 어울리지 않았다 */
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.08);
+  --shadow-pop: 0 3px 8px rgba(0, 0, 0, 0.18);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -25,16 +27,18 @@
     --ok-text: #6fd59a;
     --err-text: #ff8a80;
     --focus-ring: #fff;
-    --shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    --shadow-pop: 0 3px 8px rgba(0, 0, 0, 0.5);
   }
 }
 
 html, body { margin: 0; background: transparent; overflow: hidden; }
 body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-ui, sans-serif; color: var(--text); }
-.magic { margin: 8px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+.magic { margin: 10px; border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
 
-.magic-grip { display: flex; justify-content: center; padding: 6px 0 0; cursor: grab; }
-.magic-grip span { width: 36px; height: 4px; border-radius: 4px; background: var(--sep); }
+.magic-grip { display: flex; justify-content: center; padding: 6px 0 0; cursor: grab; touch-action: none; }
+.magic-grip:active, .magic-icon:active { cursor: grabbing; }
+.magic-grip span { width: 36px; height: 4px; border-radius: 4px; background: var(--sep); transition: background 0.15s; }
 .magic-grip:hover span { background: var(--muted); }
 
 .magic-top { display: flex; align-items: flex-start; gap: 10px; padding: 4px 14px 12px 18px; }
@@ -46,8 +50,11 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-note.action { color: var(--text); cursor: pointer; }
 .magic-note.action:hover { text-decoration: underline; }
 
-.magic-results { list-style: none; margin: 0; padding: 4px 8px 6px; max-height: 430px; overflow-y: auto; border-top: 1px solid var(--sep); }
-.magic-results:empty { display: none; }
+.magic-results { position: relative; list-style: none; margin: 0; padding: 4px 8px 6px; max-height: 430px; overflow-y: auto; border-top: 1px solid var(--sep); }
+.magic-results:not(:has(> :not(.magic-pill))) { display: none; }
+/* 고른 줄 표시 하나가 줄 사이를 미끄러져 따라간다 */
+.magic-pill { position: absolute; top: 0; left: 8px; right: 8px; border-radius: 10px; background: var(--sel); pointer-events: none; transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), height 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+.magic-pill.instant { transition: none; }
 
 /* 기능마다 색 하나 — 아래 캡슐의 점 · 결과 머리말의 점이 같은 색 */
 [data-mod="notes"], [data-mod="memo"] { --mod: #e0a800; }
@@ -63,8 +70,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-section.sub::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--mod); }
 .magic-section .count { padding: 0 6px; border-radius: 99px; background: var(--fill-tab); font-weight: 600; }
 
-.magic-row { display: flex; align-items: center; gap: 11px; min-height: 38px; padding: 6px 10px; border-radius: 10px; cursor: pointer; }
-.magic-row[aria-selected="true"] { background: var(--sel); }
+.magic-row { position: relative; display: flex; align-items: center; gap: 11px; min-height: 38px; padding: 6px 10px; border-radius: 10px; cursor: pointer; }
 .magic-row .ico { flex: none; width: 24px; height: 24px; display: grid; place-items: center; font-size: 15px; border-radius: 7px; }
 .magic-row:is(.kind-new, .kind-remind, .kind-opms, .kind-calc, .kind-date, .kind-site, .kind-web, .kind-ai) .ico { background: color-mix(in srgb, var(--mod) 15%, transparent); color: color-mix(in srgb, var(--mod) 78%, #000); font-weight: 800; }
 .magic-row .ico svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -79,10 +85,34 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-row:is(.kind-calc, .kind-date) .t { font-size: 18px; font-weight: 750; font-variant-numeric: tabular-nums; }
 .magic-note { padding: 8px 12px 10px; color: var(--muted); font-size: 12.5px; list-style: none; }
 
+/* 찾는 중 — 돋보기가 이리저리 살피고 점 세 개가 차례로 (움직임 줄이기면 숨 쉬듯) */
+.mk-searching { display: inline-flex; align-items: center; gap: 8px; animation: mk-fade-in 0.2s ease-out 0.08s both; }
+.mk-glass { flex: none; width: 18px; height: 18px; overflow: visible; color: var(--text); transform-origin: 44% 44%; animation: mk-glass-look 1.6s ease-in-out infinite; }
+.mk-glass circle { fill: color-mix(in srgb, var(--brand) 28%, transparent); stroke: currentColor; stroke-width: 2; }
+.mk-glass .mk-glass-handle { fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; }
+.mk-glass .mk-glass-shine { fill: none; stroke: var(--surface); stroke-width: 1.4; stroke-linecap: round; opacity: 0.9; }
+@keyframes mk-glass-look {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  20% { transform: translate(-4px, -1px) rotate(-14deg); }
+  45% { transform: translate(3px, 1px) rotate(12deg); }
+  70% { transform: translate(-2px, 2px) rotate(-8deg); }
+}
+.mk-dots i { font-style: normal; animation: mk-dot 1.2s ease-in-out infinite; }
+.mk-dots i:nth-child(2) { animation-delay: 0.2s; }
+.mk-dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes mk-dot { 0%, 60%, 100% { opacity: 0.2; } 30% { opacity: 1; } }
+@keyframes mk-fade-in { from { opacity: 0; } }
+@keyframes mk-glass-breathe { 50% { opacity: 0.45; } }
+
 /* 고른 줄 오른쪽의 할 일 단추 (← → 로 옮김) — 고른 단추만 이름까지 */
 .acts { display: none; flex: none; align-items: center; gap: 3px; }
 .magic-row[aria-selected="true"] .acts { display: inline-flex; }
-.act-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; min-width: 26px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.act-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; min-width: 26px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; transition: background-color 0.12s ease-out, color 0.12s ease-out, transform 0.08s; }
+.act-btn:active { transform: scale(0.96); }
+/* 복사한 단추: 잠깐 초록 체크 */
+.act-btn.done { color: var(--ok-text); }
+.act-btn.done svg { animation: mk-pop 0.32s cubic-bezier(0.34, 1.4, 0.64, 1); }
+@keyframes mk-pop { from { transform: scale(0.6); opacity: 0.4; } }
 .act-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .act-btn .act-label { display: none; }
 .act-btn.on { padding: 0 9px 0 7px; background: #ffd84d; color: #2b2400; }
@@ -92,13 +122,25 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 
 .magic-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 9px 12px 10px 14px; border-top: 1px solid var(--sep); }
 .magic-modules { display: flex; flex-wrap: wrap; gap: 6px; }
-.magic-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 8px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
-.magic-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; }
+.magic-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 8px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; cursor: grab; touch-action: none; transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s; } /* 누르면 켜고 끄기, 끌면 순서 바꾸기 */
+.magic-chip:hover { border-color: color-mix(in srgb, var(--text) 28%, transparent); color: var(--text); }
+.magic-chip:active:not(.dragging) { transform: scale(0.95); }
+/* 끄는 캡슐은 살짝 들린다 (자리는 JS 가 손을 따라 옮긴다) */
+.magic-chip.dragging { position: relative; z-index: 2; box-shadow: var(--shadow-pop); background: var(--surface); cursor: grabbing; transition: box-shadow 0.15s, background 0.15s; }
+.magic-modules.sorting, .magic-modules.sorting .magic-chip { cursor: grabbing; }
+.magic-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; transition: background 0.15s, box-shadow 0.15s; }
 .magic-chip.on { border-color: transparent; background: var(--fill-tab); color: var(--text); }
 .magic-chip.on .chip-dot { background: var(--mod); box-shadow: none; }
 .magic-chip:not(.on) { text-decoration: line-through; }
 .magic-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .magic-hint { margin-left: auto; display: flex; gap: 0 10px; height: 18px; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.magic-flash { color: var(--ok-text); font-weight: 700; }
+.magic-flash { color: var(--ok-text); font-weight: 700; animation: mk-fade-in 0.18s ease-out; }
 .magic-flash.err { color: var(--err-text); }
 kbd { display: inline-block; min-width: 14px; padding: 0 4px; border-radius: 4px; background: var(--fill-tab); box-shadow: inset 0 -1px 0 var(--line); color: var(--text); font: 600 11px/16px inherit; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .magic-pill, .magic-chip, .magic-chip .chip-dot, .act-btn, .magic-grip span { transition: none; }
+  .mk-glass { animation: mk-glass-breathe 1.8s ease-in-out infinite; }
+  .mk-dots i { animation: none; opacity: 0.6; }
+  .act-btn.done svg, .magic-flash, .mk-searching { animation: none; }
+}
