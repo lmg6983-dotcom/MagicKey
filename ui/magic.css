@@ -71,8 +71,9 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-section .count { padding: 0 6px; border-radius: 99px; background: var(--fill-tab); font-weight: 600; }
 
 .magic-row { position: relative; display: flex; align-items: center; gap: 11px; min-height: 38px; padding: 6px 10px; border-radius: 10px; cursor: pointer; }
-.magic-row .ico { flex: none; width: 24px; height: 24px; display: grid; place-items: center; font-size: 15px; border-radius: 7px; }
-.magic-row:is(.kind-new, .kind-remind, .kind-opms, .kind-calc, .kind-date, .kind-site, .kind-web, .kind-ai) .ico { background: color-mix(in srgb, var(--mod) 15%, transparent); color: color-mix(in srgb, var(--mod) 78%, #000); font-weight: 800; }
+.magic-row .ico { flex: none; width: 24px; height: 24px; display: grid; place-items: center; font-size: 15px; font-weight: 800; border-radius: 7px; } /* 모든 줄: 기능 색 칸 + 선 그림 (이모지와 섞여 어수선하던 것) */
+.magic-row .ico { background: color-mix(in srgb, var(--mod) 15%, transparent); color: color-mix(in srgb, var(--mod) 78%, #000); }
+@media (prefers-color-scheme: dark) { .magic-row .ico { background: color-mix(in srgb, var(--mod) 26%, transparent); color: color-mix(in srgb, var(--mod) 55%, #fff); } } /* 어두운 바탕에서 묻히지 않게 */
 .magic-row .ico svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .magic-row .txt { min-width: 0; flex: 1; }
 .magic-row .t { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

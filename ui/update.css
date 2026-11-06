@@ -1,16 +1,19 @@
 /* 업데이트 창 (update.html) — 색은 magic.css 의 토큰 */
-html, body { height: 100%; overflow: hidden; background: var(--surface); }
-.upd { box-sizing: border-box; display: flex; flex-direction: column; height: 100%; padding: 20px 22px 18px; font-size: 13.5px; }
+html, body { overflow: hidden; background: var(--surface); }
+/* 창 높이는 내용에 맞춘다 (update.js fit) — 짧은 안내에 큰 빈칸이 남지 않게 */
+.upd { box-sizing: border-box; display: flex; flex-direction: column; padding: 20px 22px 18px; font-size: 13.5px; }
 .upd-head { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
-.upd-badge { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--brand); color: #2b2400; font-size: 22px; }
+.upd-badge { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--brand) 18%, transparent); }
+.upd-badge img { width: 28px; height: 28px; }
 .upd h1 { margin: 0; font-size: 18px; line-height: 1.3; }
+.upd h1 .mk-dots { margin-left: 1px; }
 .upd-version { display: flex; align-items: baseline; gap: 6px; margin: 3px 0 0; font-size: 13px; font-variant-numeric: tabular-nums; }
 .upd-version .from, .upd-version .arrow { color: var(--muted); }
 .upd-version .to { font-weight: 800; }
-#upd-notes-box { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#upd-notes-box { display: flex; flex-direction: column; }
 #upd-notes-box[hidden] { display: none; }
 .upd-notes-title { margin: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
-.upd-notes { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--fill-tab); line-height: 1.6; overflow-wrap: anywhere; }
+.upd-notes { max-height: 220px; overflow-y: auto; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--fill-tab); line-height: 1.6; overflow-wrap: anywhere; }
 .upd-notes:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .upd-notes h3 { margin: 0 0 6px; font-size: 13.5px; font-weight: 800; line-height: 1.45; }
 .upd-notes h3:not(:first-child) { margin-top: 14px; }
@@ -24,15 +27,16 @@ html, body { height: 100%; overflow: hidden; background: var(--surface); }
 .upd-bar { height: 8px; border-radius: 999px; background: var(--fill-tab); overflow: hidden; }
 .upd-bar span { display: block; height: 100%; border-radius: inherit; background: var(--brand); transform: scaleX(0); transform-origin: left; transition: transform 0.2s ease-out; }
 .upd-progress small { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.upd-msg { margin: 12px 0 0; color: var(--muted); }
+.upd-msg { margin: 0; color: var(--muted); line-height: 1.55; }
+#upd-notes-box:not([hidden]) ~ .upd-msg, .upd-progress:not([hidden]) ~ .upd-msg { margin-top: 12px; }
 .upd-msg:empty { display: none; }
 .upd-msg.err { color: var(--err-text); }
-.upd-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; padding-top: 16px; }
+.upd-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 18px; }
 .upd-btn { min-width: 88px; height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; transition: background-color 0.15s ease-out, transform 0.08s; }
 .upd-btn:hover:not(:disabled) { background: var(--fill-tab); }
 .upd-btn:active:not(:disabled) { transform: scale(0.97); }
 .upd-btn.primary { border-color: transparent; background: var(--brand); color: #2b2400; }
 .upd-btn.primary:hover:not(:disabled) { background: #f2c200; }
 .upd-btn:disabled { opacity: 0.55; cursor: default; }
-.upd-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.upd-btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--text) 45%, transparent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .upd-bar span, .upd-btn { transition: none; } }
