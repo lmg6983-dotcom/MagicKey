@@ -1,9 +1,11 @@
-// MagicKey — Ctrl+Alt+Space (바꿀 수 있음) 로 어디서든 여는 만능 입력창 (앱 · 파일 · 폴더 찾기, 계산 · 날짜 계산, 웹 검색, 웹 AI)
+// MagicKey — Ctrl+Alt+Space (바꿀 수 있음) 로 어디서든 여는 만능 입력창 (메모킹 메모 · 앱 · 파일 · 폴더 찾기, 계산 · 날짜 계산, 웹 검색, 웹 AI)
 //   창은 늘 떠 있다가 보였다 숨었다 한다 (다른 곳을 누르면 숨음). 끝내기는 알림 영역 아이콘에서.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use magickey_core::index::{self, Entry, Found};
+use magickey_core::memo::{self, Memo, MemoHit, Shelf};
 use magickey_core::{calc, date, web, Answer};
+use magicopms_core::{client as opms_client, search as opms_search, settings as opms_settings};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -13,6 +15,7 @@ use std::time::{Duration, SystemTime};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::Wry;
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_updater::{Update, UpdaterExt};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -67,6 +70,140 @@ impl Index {
     }
 }
 
+/// 메모킹 메모 — 메모킹이 이 PC 에 있을 때만 (메모 폴더는 읽기만, 열기는 메모킹에게)
+struct Memos {
+    root: Option<PathBuf>,
+    settings: Option<PathBuf>,
+    /// 메모킹이 새 메모 만들기(`--new-memo-file=`)를 아는가 — 메모킹이 업데이트될 수 있어 열 때마다 다시 본다
+    can_make: AtomicBool,
+    /// 메모킹 실행 파일 (없으면 메모 파일을 기본 앱으로 연다)
+    exe: Option<PathBuf>,
+    shelf: Mutex<Shelf>,
+    list: RwLock<Arc<Vec<Memo>>>,
+    busy: AtomicBool,
+    /// 방금 보여 준 메모 id — 이것만 연다
+    shown: Mutex<HashSet<String>>,
+}
+
+impl Memos {
+    /// 메모킹 설정(%APPDATA%\MemoKing\settings.json)의 메모 폴더, 없으면 메모킹 기본값(문서\메모킹)
+    fn find(app: &AppHandle) -> Arc<Self> {
+        let p = app.path();
+        let memoking = p.config_dir().ok().map(|d| d.join("MemoKing")).filter(|d| d.is_dir());
+        // 메모킹에게 MagicKey 가 여기 있다고 알린다 → 메모킹(0.77~)은 매직키 단축키를 넘긴다 (메모킹이 없으면 폴더를 만들지 않는다)
+        if let (Some(dir), Ok(exe)) = (&memoking, std::env::current_exe()) {
+            let note = serde_json::json!({ "exe": exe, "pid": std::process::id(), "version": env!("CARGO_PKG_VERSION") }); // pid: 켜져 있을 때만 넘기게
+            let _ = std::fs::write(dir.join("magickey.json"), note.to_string());
+        }
+        let file = memoking.map(|d| d.join("settings.json"));
+        let settings = file.as_ref().and_then(|f| std::fs::read_to_string(f).ok());
+        let root = settings
+            .as_deref()
+            .and_then(memo::vault_from_settings)
+            .or_else(|| p.document_dir().ok().map(|d| d.join("메모킹")))
+            .filter(|r| r.is_dir());
+        let exe = p.local_data_dir().ok().map(|d| d.join("Programs").join("memoking").join("MemoKing.exe")).filter(|e| e.is_file());
+        let me = Arc::new(Memos { root, settings: file, can_make: AtomicBool::new(false), exe, shelf: Mutex::default(), list: RwLock::default(), busy: AtomicBool::new(false), shown: Mutex::default() });
+        me.touch();
+        me
+    }
+
+    /// 메모킹 설정 글 (없으면 빈 글)
+    fn settings_json(&self) -> String {
+        self.settings.as_ref().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default()
+    }
+
+    /// 뒤에서 메모 폴더를 다시 훑는다 (바뀐 파일만 새로 읽음, 그동안은 지난 목록으로 찾는다)
+    fn touch(self: &Arc<Self>) {
+        let Some(root) = self.root.clone() else { return };
+        let json = self.settings_json();
+        self.can_make.store(self.exe.is_some() && memo::knows_magickey(&json), Ordering::SeqCst);
+        if self.busy.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let me = self.clone();
+        std::thread::spawn(move || {
+            let list = me.shelf.lock().unwrap().refresh(&root);
+            *me.list.write().unwrap() = Arc::new(list);
+            me.busy.store(false, Ordering::SeqCst);
+        });
+    }
+}
+
+/// MagicOPMS (따로 설치하는 OPMS 찾기 앱) — 켜질 때 %APPDATA%\com.lmg6983.magicopms\magicopms.json 에 실행 파일 위치를 적는다
+struct MagicOpms {
+    /// MagicOPMS 설정 폴더
+    dir: Option<PathBuf>,
+    /// 메모킹 설정 (MagicOPMS 설정에 없는 서버 주소 · 번호 양식은 여기서)
+    memoking: Option<PathBuf>,
+}
+
+impl MagicOpms {
+    /// 실행 파일 (설치 · 삭제가 MagicKey 가 켜져 있는 사이에도 바뀌어 매번 본다)
+    fn exe(&self) -> Option<PathBuf> {
+        let note = opms_settings::read(&self.dir.as_ref()?.join("magicopms.json"));
+        Some(PathBuf::from(note.get("exe")?.as_str()?)).filter(|e| e.is_file())
+    }
+
+    /// MagicOPMS 가 쓰는 서버 주소 · 배운 번호 양식 (MagicOPMS 설정 > 메모킹 설정 — 같은 코어로)
+    fn settings(&self) -> opms_settings::Settings {
+        let own = self.dir.as_ref().map(|d| opms_settings::read(&d.join("settings.json"))).unwrap_or_default();
+        let mk = self.memoking.as_ref().map(|f| opms_settings::read(f)).unwrap_or_default();
+        opms_settings::effective(&own, &mk)
+    }
+}
+
+/// OPMS 저절로 찾기 — 사건번호를 온전히 썼거나 한 번 찾아 본 번호와 같은 꼴이면, 고르기 전에 사건을 보여 준다
+///   (메모킹 매직키와 같게: 정확한 것부터 6건, 나머지는 "OPMS 다른 n건 더 보기"). 짧게 기다리고 다시 하지 않는다
+#[derive(Serialize)]
+struct OpmsCase {
+    idx: String,
+    ourref: String,
+    yourref: String,
+    n_app: String,
+    applicant: String,
+    title: String,
+    accepted: String,
+}
+
+#[tauri::command]
+async fn opms_auto(text: String, mo: State<'_, MagicOpms>) -> Result<serde_json::Value, String> {
+    let s = mo.settings();
+    let q: String = text.trim().chars().take(40).collect();
+    if s.host.is_empty() || mo.exe().is_none() || !opms_search::auto_query(&q, &s.shapes) {
+        return Ok(serde_json::json!({ "cases": [], "total": 0 }));
+    }
+    let found = tauri::async_runtime::spawn_blocking(move || opms_client::quick_search(&s.host, &q, 60, Duration::from_secs(5))).await.map_err(|e| e.to_string())?;
+    let (rows, total) = found.map_err(|e| if e.offline { "사내망에 연결돼 있지 않아 OPMS 를 찾지 못했어요".to_string() } else { e.message })?;
+    let g = |r: &magicopms_core::Row, k: &str| magicopms_core::get(r, k).to_string();
+    let cases: Vec<OpmsCase> = rows
+        .iter()
+        .filter(|(_, score)| *score > 0)
+        .take(6)
+        .map(|(r, _)| OpmsCase {
+            idx: g(r, "idx"),
+            ourref: g(r, "ourref"),
+            yourref: g(r, "yourref"),
+            n_app: g(r, "n_app"),
+            applicant: g(r, "applicant"),
+            title: g(r, "title_kor"),
+            accepted: magicopms_core::resultset::clean_date(&g(r, "d_accept")),
+        })
+        .collect();
+    Ok(serde_json::json!({ "cases": cases, "total": total }))
+}
+
+/// OPMS 에서 찾기 — MagicOPMS 를 `--search=<글>` 로 (켜져 있으면 그 창에서 찾는다)
+#[tauri::command]
+fn open_opms(text: String, mo: State<MagicOpms>) -> Result<(), String> {
+    let exe = mo.exe().ok_or("MagicOPMS 가 설치돼 있지 않아요")?;
+    let q: String = text.lines().next().unwrap_or("").trim().chars().take(60).collect();
+    if opms_search::query_kind(&q).is_none() {
+        return Err("OPMS 에서 찾을 글이 아니에요".into());
+    }
+    std::process::Command::new(exe).arg(format!("--search={q}")).spawn().map(|_| ()).map_err(|e| format!("MagicOPMS 를 열지 못했어요: {e}"))
+}
+
 #[derive(Serialize)]
 struct Calc {
     kind: &'static str,
@@ -79,6 +216,19 @@ struct QueryOut {
     calc: Option<Calc>,
     site: Option<String>,
     question: bool,
+    memos: Vec<MemoHit>,
+    /// '새 메모' 줄을 보여 줄까 (메모킹이 알아듣고, 기능을 켜 둠)
+    #[serde(rename = "newMemo")]
+    new_memo: bool,
+    /// '알림 맞춰 저장' 줄도 (첫 줄에 날짜 같은 말, 날짜 계산 글이 아님)
+    remind: bool,
+    /// 'OPMS 에서 찾기' 줄 (MagicOPMS 가 있고, 사건번호 · 이름 · 초성 같은 글)
+    opms: bool,
+    /// 고르기 전에 저절로 찾을 글 (온전한 사건번호 · 찾아 본 번호와 같은 꼴, 서버 주소가 있음) → 창이 opms_auto 를 부른다
+    #[serde(rename = "opmsAuto")]
+    opms_auto: bool,
+    #[serde(rename = "memoMore")]
+    memo_more: usize,
     #[serde(flatten)]
     found: Found,
     indexed: usize,
@@ -88,7 +238,7 @@ struct QueryOut {
 /// 칠 때마다: 계산 · 날짜 계산, 사이트 주소, 묻는 글인가, 앱 · 폴더 · 파일 (mods = 켜 둔 기능)
 ///   async: 메인 스레드 밖에서 돈다 (이름 수십만 개를 훑는 동안 창이 굳지 않게)
 #[tauri::command]
-async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>) -> Result<QueryOut, String> {
+async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, notes: State<'_, Arc<Memos>>, mo: State<'_, MagicOpms>) -> Result<QueryOut, String> {
     let on = |m: &str| mods.iter().any(|x| x == m);
     let text: String = text.chars().take(200).collect();
     let calc = on("calc").then(|| {
@@ -96,6 +246,11 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>) -> R
             .map(|answer| Calc { kind: "date", answer })
             .or_else(|| calc::calc(&text).map(|answer| Calc { kind: "calc", answer }))
     });
+    let show_opms = on("opms") && opms_search::query_kind(&text).is_some() && mo.exe().is_some();
+    let date_calc = calc.as_ref().is_some_and(|c| c.as_ref().is_some_and(|c| c.kind == "date"));
+    let new_memo = on("memo") && notes.can_make.load(Ordering::SeqCst);
+    let (memos, memo_more) = memo::search(&notes.list.read().unwrap().clone(), &text, if on("notes") { 4 } else { 0 });
+    notes.shown.lock().unwrap().extend(memos.iter().map(|m| m.id.clone()));
     let entries = idx.entries.read().unwrap().clone();
     let limits = (if on("apps") { 4 } else { 0 }, if on("files") { 3 } else { 0 }, if on("files") { 6 } else { 0 });
     let found = index::search(&entries, &text, limits);
@@ -105,6 +260,12 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>) -> R
         calc: calc.flatten(),
         site: on("web").then(|| web::site_url(&text)).flatten(),
         question: web::looks_like_question(&text),
+        memos,
+        new_memo,
+        remind: new_memo && !date_calc && memo::mentions_date(&text),
+        opms: show_opms,
+        opms_auto: show_opms && { let s = mo.settings(); !s.host.is_empty() && opms_search::auto_query(text.trim(), &s.shapes) },
+        memo_more,
         found,
         indexed: entries.len(),
         building: idx.building.load(Ordering::SeqCst),
@@ -131,13 +292,60 @@ fn key_label(s: &Shortcut) -> String {
 }
 
 /// 창의 기능 캡슐과 같은 것 — 알림 영역 메뉴 '설정' 에서도 켜고 끈다 (id 는 magic.js MODULES 와 같게)
-const MODULES: [(&str, &str); 5] = [("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
+const MODULES: [(&str, &str); 8] = [("memo", "새 메모 (메모킹)"), ("notes", "메모 검색 (메모킹)"), ("opms", "OPMS 검색 (MagicOPMS)"), ("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
 
 /// 알림 영역 메뉴에서 글자 · 체크를 바꿔야 하는 줄
 struct TrayMenu {
     open: MenuItem<Wry>,
+    /// 업데이트 확인 · 설치 (글로 지금 상태를 보인다)
+    update: MenuItem<Wry>,
     hotkey: MenuItem<Wry>,
     mods: Vec<CheckMenuItem<Wry>>,
+}
+
+// ---------- 자동 업데이트 ----------
+//   GitHub Release 의 latest.json 을 본다 (서명이 맞는 설치 파일만). 켜고 1분 뒤 · 6시간마다 조용히 확인하고,
+//   새 버전이 있으면 알림 영역 메뉴에 "v… 으로 업데이트" — 누르면 받아서 설치하고 다시 켠다
+
+/// 찾아 둔 새 버전 (누르면 설치)
+#[derive(Default)]
+struct PendingUpdate(Mutex<Option<Update>>);
+
+fn update_text(app: &AppHandle, text: &str) {
+    let _ = app.state::<TrayMenu>().update.set_text(text);
+}
+
+/// 새 버전 확인 — 있으면 메뉴에 띄워 둔다. 확인하지 못한 것은 손으로 눌렀을 때만 알린다 (조용한 확인은 메뉴를 그대로)
+async fn check_update(app: AppHandle, by_hand: bool) {
+    let found = match app.updater() {
+        Ok(u) => u.check().await,
+        Err(e) => Err(e),
+    };
+    match found {
+        Ok(Some(u)) => {
+            update_text(&app, &format!("✨ v{} 으로 업데이트", u.version));
+            if let Some(tray) = app.tray_by_id("main") {
+                let _ = tray.set_tooltip(Some(format!("MagicKey — 새 버전 v{} 이 있어요 (✦ 오른쪽 클릭 › 설정)", u.version)));
+            }
+            *app.state::<PendingUpdate>().0.lock().unwrap() = Some(u);
+        }
+        Ok(None) => update_text(&app, &format!("최신 버전이에요 (v{})", env!("CARGO_PKG_VERSION"))),
+        Err(_) if by_hand => update_text(&app, "업데이트를 확인하지 못했어요 — 눌러서 다시"),
+        Err(_) => {}
+    }
+}
+
+/// 메뉴를 눌렀을 때: 찾아 둔 새 버전이 있으면 설치 (설치 파일이 MagicKey 를 끄고 새로 켠다), 없으면 확인
+async fn update_clicked(app: AppHandle) {
+    let pending = app.state::<PendingUpdate>().0.lock().unwrap().take();
+    let Some(u) = pending else {
+        update_text(&app, "업데이트 확인 중…");
+        return check_update(app, true).await;
+    };
+    update_text(&app, &format!("v{} 받는 중…", u.version));
+    if let Err(e) = u.download_and_install(|_, _| {}, || {}).await {
+        update_text(&app, &format!("업데이트하지 못했어요 ({e}) — 눌러서 다시"));
+    }
 }
 
 /// 알림 영역 아이콘 · 메뉴에 지금 단축키를 쓴다 (못 잡았으면 그렇다고)
@@ -152,18 +360,67 @@ fn show_key(app: &AppHandle, s: &Shortcut, ok: bool) {
     }
 }
 
+/// 메모킹(0.77~)은 magickey.json 을 보고 1분 안에 매직키 단축키를 놓는다 — 그동안 조용히 다시 잡아 보고, 2분이 지나도 못 잡으면 창을 띄워 알린다
+fn retry_hotkey(app: AppHandle) {
+    std::thread::spawn(move || {
+        for _ in 0..12 {
+            std::thread::sleep(Duration::from_secs(10));
+            let (tx, rx) = std::sync::mpsc::channel();
+            let a = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let hk = a.state::<Hotkey>();
+                let key = *hk.now.lock().unwrap(); // 그사이 단축키를 바꿨으면 그 키
+                let gs = a.global_shortcut();
+                let ok = gs.is_registered(key) || gs.register(key).is_ok();
+                if ok {
+                    *hk.notice.lock().unwrap() = None;
+                    show_key(&a, &key, true);
+                }
+                let _ = tx.send(ok);
+            });
+            if rx.recv().unwrap_or(false) {
+                return;
+            }
+        }
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || toggle(&a));
+    });
+}
+
 #[derive(Serialize)]
 struct Init {
     web: &'static [web::Site],
     ai: &'static [web::Site],
     notice: Option<String>,
     hotkey: String,
+    /// 메모킹 메모를 찾을 수 있는가 (아니면 '메모' 캡슐을 숨긴다)
+    memo: bool,
+    /// 메모킹 매직키에서 꺼 둔 기능 — 창에서 캡슐을 아직 만지지 않았으면 이대로
+    #[serde(rename = "memokingOff")]
+    memoking_off: Option<Vec<String>>,
+    /// MagicOPMS 가 있는가 (아니면 'OPMS' 캡슐을 숨긴다)
+    opms: bool,
 }
 
 #[tauri::command]
-fn init(hk: State<Hotkey>) -> Init {
+fn init(hk: State<Hotkey>, notes: State<Arc<Memos>>, mo: State<MagicOpms>) -> Init {
     let hotkey = key_label(&hk.now.lock().unwrap());
-    Init { web: web::WEB_ENGINES, ai: web::AI_SITES, notice: hk.notice.lock().unwrap().clone(), hotkey }
+    Init { web: web::WEB_ENGINES, ai: web::AI_SITES, notice: hk.notice.lock().unwrap().clone(), hotkey, memo: notes.root.is_some(), memoking_off: memo::magic_off(&notes.settings_json()), opms: mo.exe().is_some() }
+}
+
+/// 메모 열기 — 메모킹에게 `--open-memo=<id>` 로 (꺼져 있으면 켜면서 연다). 메모킹 실행 파일을 못 찾으면 .md 파일을 기본 앱으로
+#[tauri::command]
+fn open_memo(app: AppHandle, id: String, notes: State<Arc<Memos>>) -> Result<(), String> {
+    if !notes.shown.lock().unwrap().contains(&id) {
+        return Err("찾은 메모가 아니에요".into());
+    }
+    match &notes.exe {
+        Some(exe) => std::process::Command::new(exe).arg(format!("--open-memo={id}")).spawn().map(|_| ()).map_err(|e| format!("메모킹을 열지 못했어요: {e}")),
+        None => {
+            let file = notes.list.read().unwrap().iter().find(|m| m.id == id).map(|m| m.file.clone()).ok_or("메모를 찾지 못했어요")?;
+            app.opener().open_path(file.to_string_lossy(), None::<&str>).map_err(|e| format!("열지 못했어요: {e}"))
+        }
+    }
 }
 
 /// 단축키 바꾸기 (key = "ctrl+shift+KeyK" 꼴) — 새 키를 잡은 뒤에야 옛 키를 놓는다 (못 잡으면 그대로)
@@ -195,9 +452,40 @@ fn set_hotkey(app: AppHandle, key: String, hk: State<Hotkey>) -> Result<String, 
 /// 창에서 캡슐을 눌렀을 때 — 알림 영역 메뉴의 체크도 맞춘다
 #[tauri::command]
 fn sync_modules(off: Vec<String>, menu: State<TrayMenu>) {
-    for (item, (id, _)) in menu.mods.iter().zip(MODULES) {
-        let _ = item.set_checked(!off.iter().any(|o| o == id));
+    for item in &menu.mods {
+        let id = item.id().as_ref().trim_start_matches("mod:").to_string();
+        let _ = item.set_checked(!off.contains(&id));
     }
+}
+
+/// 새 메모 (remind: 첫 줄 날짜로 알림도) — 글을 임시 폴더의 magickey-*.txt 로 쓰고 메모킹에게 `--new-memo-file=` 로 넘긴다 (메모 파일은 메모킹만 쓴다)
+#[tauri::command]
+fn new_memo(text: String, open: bool, remind: bool, notes: State<Arc<Memos>>) -> Result<String, String> {
+    let (Some(exe), true) = (&notes.exe, notes.can_make.load(Ordering::SeqCst)) else {
+        return Err("메모킹을 업데이트하면 새 메모를 만들 수 있어요".into());
+    };
+    let text = text.trim();
+    if text.is_empty() || text.len() > 1024 * 1024 {
+        return Err("메모로 만들 글이 없어요".into());
+    }
+    let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    // 메모킹(Node)과 같은 임시 폴더: TEMP 먼저 (Rust 의 temp_dir 은 TMP 먼저라, 둘이 다른 PC 에서 메모킹이 파일을 거절한다)
+    let tmp = std::env::var_os("TEMP").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let file = tmp.join(format!("magickey-{}-{nanos}.txt", std::process::id()));
+    std::fs::write(&file, text).map_err(|e| format!("글을 넘기지 못했어요: {e}"))?;
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg(format!("--new-memo-file={}", file.display()));
+    if open {
+        cmd.arg("--open-new");
+    }
+    if remind {
+        cmd.arg("--remind"); // 메모킹이 첫 줄의 날짜를 읽어 알림을 맞춘다
+    }
+    cmd.spawn().map_err(|e| {
+        let _ = std::fs::remove_file(&file);
+        format!("메모킹을 열지 못했어요: {e}")
+    })?;
+    Ok(if open { String::new() } else { "메모킹에 새 메모를 만들었어요".into() })
 }
 
 /// 찾은 줄의 할 일: open (열기 · 실행) · reveal (폴더 열기) · copyPath (경로 복사)
@@ -260,6 +548,9 @@ fn toggle(app: &AppHandle) {
     let idx = app.state::<Arc<Index>>();
     idx.shown.lock().unwrap().clear();
     idx.touch();
+    let notes = app.state::<Arc<Memos>>();
+    notes.shown.lock().unwrap().clear();
+    notes.touch();
 }
 
 fn main() {
@@ -268,6 +559,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _, e| {
@@ -280,10 +572,21 @@ fn main() {
         .setup(|app| {
             let dir = app.path().app_local_data_dir()?;
             app.manage(Index::new(dir.join("index.tsv")));
+            let notes = Memos::find(app.handle());
+            let has_memo = notes.root.is_some();
+            app.manage(notes);
+            let cfg = app.path().config_dir().ok();
+            let mo = MagicOpms { dir: cfg.as_ref().map(|d| d.join(opms_settings::APP_DIR)), memoking: cfg.map(|d| d.join("MemoKing").join("settings.json")) };
+            let has_opms = mo.exe().is_some();
+            app.manage(mo);
+
             let file = dir.join("hotkey.txt");
+            // 내가 바꾼 키 > 메모킹 매직키에서 쓰던 키 > Ctrl+Alt+Space
+            let memoking = app.state::<Arc<Memos>>().settings_json();
             let hotkey = std::fs::read_to_string(&file)
                 .ok()
                 .and_then(|s| s.trim().parse().ok())
+                .or_else(|| memo::magic_key(&memoking)?.parse().ok())
                 .unwrap_or(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space));
             app.manage(Hotkey { now: Mutex::new(hotkey), file, notice: Mutex::default() });
 
@@ -292,16 +595,34 @@ fn main() {
             let hotkey_item = MenuItem::with_id(app, "hotkey", "단축키 바꾸기…", true, None::<&str>)?;
             let mods = MODULES
                 .iter()
-                .map(|(id, name)| CheckMenuItem::with_id(app, format!("mod:{id}"), name, true, true, None::<&str>))
+                .filter(|(id, _)| match *id {
+                    "memo" | "notes" => has_memo, // 메모킹이 없으면 메모 줄도 없다
+                    "opms" => has_opms,
+                    _ => true,
+                })
+                .map(|(id, name)| CheckMenuItem::with_id(app, format!("mod:{id}"), name, true, *id != "opms", None::<&str>))
                 .collect::<tauri::Result<Vec<_>>>()?;
             let autostart = CheckMenuItem::with_id(app, "autostart", "Windows 시작할 때 켜기", true, app.autolaunch().is_enabled().unwrap_or(false), None::<&str>)?;
             let reindex = MenuItem::with_id(app, "reindex", "파일 목록 새로 만들기", true, None::<&str>)?;
+            let update = MenuItem::with_id(app, "update", format!("업데이트 확인 (v{})", env!("CARGO_PKG_VERSION")), true, None::<&str>)?;
             let sep = || PredefinedMenuItem::separator(app);
             let feats = Submenu::with_items(app, "기능", true, &mods.iter().map(|m| m as &dyn tauri::menu::IsMenuItem<Wry>).collect::<Vec<_>>())?;
-            let settings = Submenu::with_items(app, "설정", true, &[&hotkey_item, &feats, &sep()?, &autostart, &reindex])?;
+            let settings = Submenu::with_items(app, "설정", true, &[&hotkey_item, &feats, &sep()?, &autostart, &reindex, &sep()?, &update])?;
             let quit = MenuItem::with_id(app, "quit", "끝내기", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &sep()?, &settings, &sep()?, &quit])?;
-            app.manage(TrayMenu { open, hotkey: hotkey_item, mods });
+            app.manage(TrayMenu { open, update, hotkey: hotkey_item, mods });
+            app.manage(PendingUpdate::default());
+            // 켜고 1분 뒤 · 그 뒤 6시간마다 조용히 확인 (로그인 직후 네트워크가 늦게 잡혀도 되게)
+            let h = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(60));
+                loop {
+                    if h.state::<PendingUpdate>().0.lock().unwrap().is_none() {
+                        tauri::async_runtime::block_on(check_update(h.clone(), false));
+                    }
+                    std::thread::sleep(Duration::from_secs(6 * 3600));
+                }
+            });
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().cloned().ok_or("아이콘이 없어요")?)
                 .menu(&menu)
@@ -325,6 +646,9 @@ fn main() {
                         idx.touch();
                     }
                     "quit" => app.exit(0),
+                    "update" => {
+                        tauri::async_runtime::spawn(update_clicked(app.clone()));
+                    }
                     id => {
                         if let Some(m) = id.strip_prefix("mod:") {
                             let on = app.state::<TrayMenu>().mods.iter().find(|i| i.id().as_ref() == id).and_then(|i| i.is_checked().ok());
@@ -348,7 +672,11 @@ fn main() {
                     key_label(&hotkey)
                 );
                 *app.state::<Hotkey>().notice.lock().unwrap() = Some(msg);
-                toggle(app.handle());
+                if memo::knows_magickey(&memoking) {
+                    retry_hotkey(app.handle().clone()); // 메모킹이 곧 키를 넘긴다 — 창을 띄우지 않고 기다린다
+                } else {
+                    toggle(app.handle());
+                }
             }
             Ok(())
         })
@@ -357,7 +685,7 @@ fn main() {
                 let _ = w.hide(); // 다른 곳을 누르면 숨는다
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, act, copy, open_web, hide])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }

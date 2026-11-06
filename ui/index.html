@@ -10,8 +10,8 @@
     <div class="magic-grip" data-tauri-drag-region title="끌어서 옮기기"><span data-tauri-drag-region></span></div>
     <div class="magic-top">
       <span class="magic-icon" aria-hidden="true" data-tauri-drag-region>✦</span>
-      <input id="magic-input" class="magic-input" placeholder="앱, 파일 찾기, 계산, 웹 검색" autocomplete="off" spellcheck="false"
-        role="combobox" aria-expanded="true" aria-label="매직키 입력" aria-controls="magic-results" aria-autocomplete="list" autofocus />
+      <textarea id="magic-input" class="magic-input" rows="1" placeholder="앱, 파일 찾기, 계산, 웹 검색" spellcheck="false"
+        role="combobox" aria-expanded="true" aria-label="매직키 입력 (Shift+Enter 줄 바꿈)" aria-controls="magic-results" aria-autocomplete="list" autofocus></textarea>
       <button id="magic-clear" class="magic-clear" type="button" title="지우기 (Esc)" aria-label="입력 지우기" hidden>✕</button>
     </div>
     <ul id="magic-results" class="magic-results" role="listbox" aria-label="결과"></ul>

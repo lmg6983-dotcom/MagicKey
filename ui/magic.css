@@ -37,11 +37,11 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-grip span { width: 36px; height: 4px; border-radius: 4px; background: var(--sep); }
 .magic-grip:hover span { background: var(--muted); }
 
-.magic-top { display: flex; align-items: center; gap: 10px; padding: 4px 14px 12px 18px; }
+.magic-top { display: flex; align-items: flex-start; gap: 10px; padding: 4px 14px 12px 18px; }
 .magic-icon { font-size: 21px; line-height: 1.45; color: var(--brand); -webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.3); cursor: grab; }
-.magic-input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 20px; line-height: 1.45; caret-color: #e0a800; }
+.magic-input { flex: 1; min-width: 0; display: block; height: 29px; max-height: 174px; padding: 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; color: var(--text); font: inherit; font-size: 20px; line-height: 1.45; caret-color: #e0a800; }
 .magic-input::placeholder { color: var(--muted); }
-.magic-clear { flex: none; width: 24px; height: 24px; border: 0; border-radius: 50%; background: var(--fill-tab); color: var(--muted); font-size: 12px; cursor: pointer; }
+.magic-clear { flex: none; width: 24px; height: 24px; margin-top: 2.5px; border: 0; border-radius: 50%; background: var(--fill-tab); color: var(--muted); font-size: 12px; cursor: pointer; }
 .magic-clear:hover { color: var(--text); }
 .magic-note.action { color: var(--text); cursor: pointer; }
 .magic-note.action:hover { text-decoration: underline; }
@@ -50,6 +50,8 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-results:empty { display: none; }
 
 /* 기능마다 색 하나 — 아래 캡슐의 점 · 결과 머리말의 점이 같은 색 */
+[data-mod="notes"], [data-mod="memo"] { --mod: #e0a800; }
+[data-mod="opms"] { --mod: #4c7dff; }
 [data-mod="apps"] { --mod: #f76707; }
 [data-mod="files"] { --mod: #1098ad; }
 [data-mod="calc"] { --mod: #2f9e44; }
@@ -64,7 +66,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-row { display: flex; align-items: center; gap: 11px; min-height: 38px; padding: 6px 10px; border-radius: 10px; cursor: pointer; }
 .magic-row[aria-selected="true"] { background: var(--sel); }
 .magic-row .ico { flex: none; width: 24px; height: 24px; display: grid; place-items: center; font-size: 15px; border-radius: 7px; }
-.magic-row:is(.kind-calc, .kind-date, .kind-site, .kind-web, .kind-ai) .ico { background: color-mix(in srgb, var(--mod) 15%, transparent); color: color-mix(in srgb, var(--mod) 78%, #000); font-weight: 800; }
+.magic-row:is(.kind-new, .kind-remind, .kind-opms, .kind-calc, .kind-date, .kind-site, .kind-web, .kind-ai) .ico { background: color-mix(in srgb, var(--mod) 15%, transparent); color: color-mix(in srgb, var(--mod) 78%, #000); font-weight: 800; }
 .magic-row .ico svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .magic-row .txt { min-width: 0; flex: 1; }
 .magic-row .t { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

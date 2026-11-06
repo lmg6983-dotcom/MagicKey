@@ -1,5 +1,5 @@
-// 매직키 창 — 치는 대로 계산 · 앱 · 폴더 · 파일 · 웹 검색 · 웹 AI 줄을 보여 주고, 고른 줄을 실행한다.
-//   ↑↓ 고르기 · ← → 할 일 고르기 · Enter 실행 · Ctrl+Shift+C 경로 복사 · Ctrl+Shift+E 폴더 열기 · Esc 지우기 → 닫기
+// 매직키 창 — 치는 대로 계산 · 메모킹 메모 · 앱 · 폴더 · 파일 · 웹 검색 · 웹 AI 줄을 보여 주고, 고른 줄을 실행한다.
+//   ↑↓ 고르기 · ← → 할 일 고르기 · Enter 실행 · Shift+Enter 줄 바꿈 (여러 줄 메모: 첫 줄이 제목) · Ctrl+Enter 다른 실행(새 메모: 저장하고 열기) · Ctrl+Shift+C 경로 복사 · Ctrl+Shift+E 폴더 열기 · Esc 지우기 → 닫기
 //   아래 캡슐 = 기능, 누르면 켜고 끈다 (이 PC 에 기억) · 단축키 · 기능 설정은 알림 영역 ✦ 오른쪽 클릭 메뉴에도
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -13,6 +13,9 @@ const hintEl = document.getElementById('magic-hint');
 const box = document.getElementById('magic');
 
 const MODULES = [
+  { id: 'memo', chip: '새 메모', name: '새 메모: 쓴 글을 메모킹 새 메모로 저장 (Enter 저장, Ctrl+Enter 저장하고 열기)', memo: true },
+  { id: 'opms', chip: 'OPMS', name: 'OPMS 검색: 사건번호 · 출원인 · 발명자 · 초성을 쓰면 MagicOPMS 로 찾기 (사내망)', opms: true, defaultOff: true },
+  { id: 'notes', chip: '메모', name: '메모 검색: 메모킹 메모의 제목 · 내용에서 찾아 메모킹으로 열기 (메모 폴더는 읽기만)', memo: true },
   { id: 'apps', chip: '앱', name: '앱 검색: 시작 메뉴 프로그램을 바로 실행' },
   { id: 'files', chip: '파일', name: '파일 검색: PC 의 파일 · 폴더 이름을 찾아 열기 (내용은 읽지 않음)' },
   { id: 'calc', chip: '계산', name: '계산기: 1,200 × 3 · 15% * 80000 · 3주 뒤 · 12/25까지 · 9:15부터 18:30까지' },
@@ -23,12 +26,20 @@ const store = {
   get: (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 기억 못 해도 지금은 된다 */ } },
 };
-let off = new Set(store.get('magic.off') ?? []); // 캡슐로 꺼 둔 기능
-const isOn = (id) => !off.has(id);
+let off = new Set(store.get('magic.off') ?? []); // 캡슐로 꺼 둔 기능 (아직 만지지 않았으면 메모킹 매직키 설정을 따른다 — init 뒤)
+let optIn = new Set(store.get('magic.on') ?? []); // 기본값이 꺼짐인 기능(OPMS) 중 켠 것
+const DEFAULT_OFF = new Set(MODULES.filter((m) => m.defaultOff).map((m) => m.id));
+const isOn = (id) => (DEFAULT_OFF.has(id) ? optIn.has(id) : !off.has(id));
+const offList = () => MODULES.map((m) => m.id).filter((id) => !isOn(id));
+// 메모킹이 없으면 '메모' 캡슐, MagicOPMS 가 없으면 'OPMS' 캡슐은 없다
+const shownModules = () => MODULES.filter((m) => (!m.memo || sites.memo) && (!m.opms || sites.opms));
 
-let sites = { web: [], ai: [], notice: null, hotkey: '' }; // notice: 단축키를 못 잡았을 때 안내
+let sites = { web: [], ai: [], notice: null, hotkey: '', memo: false, opms: false }; // notice: 단축키를 못 잡았을 때 안내
 let recording = false; // 새 단축키를 기다리는 중
 let res = null; // 마지막 query 결과
+// OPMS 저절로 찾기 (사건번호를 온전히 썼거나 찾아 본 번호와 같은 꼴) — 치기를 잠깐 멈추면 한 번만 묻는다
+let auto = { query: '', cases: [], total: 0, error: '', loading: false };
+let autoTimer = 0;
 let rows = [];
 let selected = 0;
 let activeAct = 0;
@@ -65,6 +76,10 @@ const siteLabel = (s) => (s.paste ? `${s.name} (복사해 열기)` : s.name);
 /** 이 줄에서 할 수 있는 일 (첫 번째가 Enter) */
 function actionsFor(r) {
   switch (r.kind) {
+    case 'new': case 'remind': return [{ id: 'save', label: '저장', text: true }, { id: 'saveOpen', label: '저장하고 열기', key: 'Ctrl+Enter', text: true }];
+    case 'opms': return [{ id: 'open', label: 'MagicOPMS 에서 찾기' }];
+    case 'case': return [{ id: 'open', label: 'MagicOPMS 에서 열기' }, { id: 'copyRef', label: '관리번호 복사', text: true }];
+    case 'memo': return [{ id: 'openMemo', label: '메모킹에서 열기' }];
     case 'app': return [{ id: 'open', label: '실행' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }];
     case 'folder': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '위 폴더에서 보기', key: 'Ctrl+Shift+E' }];
     case 'file': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }];
@@ -78,7 +93,7 @@ function actionsFor(r) {
 
 // ---------- 아래 캡슐 ----------
 function renderModules() {
-  modulesEl.replaceChildren(...MODULES.map((m) => {
+  modulesEl.replaceChildren(...shownModules().map((m) => {
     const chip = el('button', `magic-chip${isOn(m.id) ? ' on' : ''}`);
     chip.type = 'button';
     chip.dataset.mod = m.id;
@@ -86,16 +101,18 @@ function renderModules() {
     chip.setAttribute('aria-pressed', String(isOn(m.id)));
     chip.append(el('span', 'chip-dot'), m.chip);
     chip.addEventListener('mousedown', (e) => e.preventDefault()); // 입력 칸 포커스 유지
-    chip.addEventListener('click', () => setModule(m.id, off.has(m.id)));
+    chip.addEventListener('click', () => setModule(m.id, !isOn(m.id)));
     return chip;
   }));
 }
 
 function setModule(id, on) {
-  if (on) off.delete(id);
-  else off.add(id);
-  store.set('magic.off', [...off]);
-  invoke('sync_modules', { off: [...off] }).catch(() => {}); // 알림 영역 메뉴 체크도 같게
+  const set = DEFAULT_OFF.has(id) ? optIn : off;
+  if (on === DEFAULT_OFF.has(id)) set.add(id);
+  else set.delete(id);
+  if (DEFAULT_OFF.has(id)) store.set('magic.on', [...optIn]);
+  else store.set('magic.off', [...off]);
+  invoke('sync_modules', { off: offList() }).catch(() => {}); // 알림 영역 메뉴 체크도 같게
   renderModules();
   search();
 }
@@ -145,6 +162,28 @@ function row(r, index, query) {
     t.textContent = r.value;
     s.textContent = r.detail;
     s.title = r.detail;
+  } else if (r.kind === 'new') {
+    ico.textContent = '✚';
+    t.textContent = '새 메모로 저장';
+    s.textContent = query;
+  } else if (r.kind === 'remind') {
+    ico.textContent = '⏰';
+    t.textContent = '알림 맞춰 저장';
+    s.textContent = '글 속 날짜 · 시각에 메모킹이 알림을 맞춰요';
+  } else if (r.kind === 'opms') {
+    ico.textContent = '🏢';
+    t.textContent = r.more ? `OPMS 다른 ${r.more.toLocaleString()}건 더 보기` : 'OPMS 에서 찾기';
+    s.textContent = `'${query.slice(0, 40)}' — 사건번호 · 출원인 · 발명자 · 초성`;
+  } else if (r.kind === 'case') {
+    ico.textContent = '🏢';
+    t.append(highlighted([r.ourref, r.title].filter(Boolean).join(' '), query));
+    s.textContent = [r.applicant, r.n_app, r.accepted].filter(Boolean).join(' · ');
+    s.title = s.textContent;
+  } else if (r.kind === 'memo') {
+    ico.textContent = r.locked ? '🔒' : '📝';
+    t.append(highlighted(r.title, query));
+    s.textContent = r.snippet;
+    s.title = r.snippet;
   } else if (r.kind === 'site') {
     ico.append(svg('web'));
     t.textContent = '사이트 열기';
@@ -210,10 +249,25 @@ function render() {
   const put = (r) => nodes.push(row(r, rows.push(r) - 1, query));
   if (recording) note(`새 단축키를 누르세요 (Ctrl · Alt · Win 과 함께, 예: Ctrl+Shift+Space). 지금: ${sites.hotkey} · Esc 취소`);
   else if (query && res) {
+    if (res.newMemo) put({ kind: 'new', mod: 'memo' }); // 메모킹 매직키처럼 맨 위 (Enter 로 바로 저장)
+    if (res.remind) put({ kind: 'remind', mod: 'memo' }); // 내일 3시 치과 → 그때 알림
+    if (res.opms) { // 메모킹 매직키처럼 새 메모 바로 아래
+      const a = auto.query === query ? auto : null;
+      if (a?.cases.length) {
+        section('OPMS', a.cases.length, 'opms');
+        a.cases.forEach((c) => put({ kind: 'case', mod: 'opms', ...c }));
+      } else if (a?.loading) note('OPMS 에서 찾는 중…');
+      else if (a?.error) note(a.error);
+      put({ kind: 'opms', mod: 'opms', more: a && a.total > a.cases.length ? a.total - a.cases.length : 0 });
+    }
     if (res.calc) put({ ...res.calc, mod: 'calc', text: query });
     if (res.site) put({ kind: 'site', mod: 'site', url: res.site });
     const ask = () => isOn('ai') && put({ kind: 'ai', mod: 'ai', sites: sites.ai });
     if (res.question) ask(); // 묻는 글이면 AI 줄을 위로
+    if (res.memos.length) {
+      section('메모', res.memos.length, 'notes');
+      res.memos.forEach((m) => put({ kind: 'memo', mod: 'notes', ...m }));
+    }
     if (res.apps.length) {
       section('앱', res.apps.length, 'apps');
       res.apps.forEach((a) => put({ kind: 'app', mod: 'apps', ...a }));
@@ -226,11 +280,12 @@ function render() {
       section('파일', res.files.length, 'files', res.folders.length > 0);
       res.files.forEach((f) => put({ kind: 'file', mod: 'files', ...f }));
     }
-    if (res.more > 0) note(`다른 ${res.more.toLocaleString()}건은 글을 더 써서 좁혀 보세요`);
-    const searched = isOn('apps') || isOn('files');
-    const found = res.calc || res.site || res.apps.length || res.folders.length || res.files.length;
+    const more = res.more + res.memoMore;
+    if (more > 0) note(`다른 ${more.toLocaleString()}건은 글을 더 써서 좁혀 보세요`);
+    const searched = isOn('apps') || isOn('files') || (sites.memo && isOn('notes'));
+    const found = res.calc || res.site || res.memos.length || res.apps.length || res.folders.length || res.files.length;
     if (searched && !res.indexed) note(res.building ? '프로그램 · 파일 목록을 만드는 중이에요. 처음 한 번만, 잠시 뒤 찾아져요' : '프로그램 · 파일 목록이 비어 있어요');
-    else if (searched && !found) note(`'${query.slice(0, 30)}'와 맞는 앱 · 파일이 없어요`); // 웹 · AI 줄 위에
+    else if (searched && !found) note(`'${query.slice(0, 30)}'와 맞는 ${sites.memo && isOn('notes') ? '메모 · ' : ''}앱 · 파일이 없어요`); // 웹 · AI 줄 위에
     if (isOn('web')) put({ kind: 'web', mod: 'web', sites: sites.web });
     if (!res.question) ask();
     if (!rows.length && !searched) note(`'${query.slice(0, 30)}'와 맞는 결과가 없어요`);
@@ -305,10 +360,25 @@ async function search() {
     render();
     return;
   }
-  const out = await invoke('query', { text, mods: MODULES.map((m) => m.id).filter(isOn) }).catch(() => null);
+  const out = await invoke('query', { text, mods: shownModules().map((m) => m.id).filter(isOn) }).catch(() => null);
   if (my !== seq || !out) return; // 더 새 입력이 있으면 버린다
   res = out;
   render();
+  if (out.opmsAuto) askOpms(text.trim());
+}
+
+// 저절로 찾기: 같은 글을 다시 묻지 않고, 늦게 온 답은 지금 글과 같을 때만 쓴다
+function askOpms(q) {
+  if (auto.query === q && !auto.error) return;
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(async () => {
+    auto = { query: q, cases: [], total: 0, error: '', loading: true };
+    render();
+    const got = await invoke('opms_auto', { text: q }).then((r) => ({ ...r, error: '' }), (err) => ({ cases: [], total: 0, error: String(err) }));
+    if (input.value.trim() !== q) return;
+    auto = { query: q, ...got, loading: false };
+    render();
+  }, 250);
 }
 
 const hide = () => invoke('hide');
@@ -324,7 +394,21 @@ async function run(i, act = 0) {
       return;
     }
     let msg;
-    if (r.kind === 'site') msg = await invoke('open_web', { kind: 'site', site: '', text: r.url });
+    if (r.kind === 'new' || r.kind === 'remind') {
+      msg = await invoke('new_memo', { text: input.value, open: a.id === 'saveOpen', remind: r.kind === 'remind' });
+      input.value = ''; // 저장한 글은 다음에 열 때 남기지 않는다
+      grow();
+    } else if (r.kind === 'opms') msg = await invoke('open_opms', { text: input.value });
+    else if (r.kind === 'case') {
+      const ref = r.ourref || r.n_app || r.yourref;
+      if (a.id === 'copyRef') {
+        flash(true, await invoke('copy', { text: ref }));
+        return;
+      }
+      msg = await invoke('open_opms', { text: ref });
+    }
+    else if (r.kind === 'memo') msg = await invoke('open_memo', { id: r.id });
+    else if (r.kind === 'site') msg = await invoke('open_web', { kind: 'site', site: '', text: r.url });
     else if (r.kind === 'web' || r.kind === 'ai') msg = await invoke('open_web', { kind: r.kind, site: a.id, text: input.value });
     else msg = await invoke('act', { action: a.id, path: r.path });
     if (a.id === 'copyPath') {
@@ -340,9 +424,16 @@ async function run(i, act = 0) {
   }
 }
 
+// 입력칸 높이를 글 줄 수에 맞춘다 (6줄까지, 그 위로는 칸 안에서 넘김)
+function grow() {
+  input.style.height = 'auto';
+  input.style.height = `${input.scrollHeight}px`;
+}
+
 let searchTimer = 0;
 let pending = false; // 친 글을 아직 찾지 않았다 (Enter 가 지난 글의 결과를 실행하지 않게)
 input.addEventListener('input', () => {
+  grow();
   selected = 0;
   pending = true;
   clearTimeout(searchTimer);
@@ -352,6 +443,7 @@ input.addEventListener('input', () => {
 
 function clearText() {
   input.value = '';
+  grow();
   selected = 0;
   search();
   input.focus();
@@ -412,15 +504,17 @@ input.addEventListener('keydown', (e) => {
     activeAct--;
     markAct();
     updateHint();
-  } else if (e.key === 'Enter') {
+  } else if (e.key === 'Enter' && !e.shiftKey) { // Shift+Enter 는 줄 바꿈
     e.preventDefault();
-    (pending ? search() : Promise.resolve()).then(() => rows.length && run(selected, activeAct));
+    const act = e.ctrlKey ? 1 : activeAct; // Ctrl+Enter: 두 번째 할 일
+    (pending ? search() : Promise.resolve()).then(() => rows.length && run(selected, act));
   }
 });
 
 // 창이 떠오를 때마다: 지난 글은 남겨 두고 통째로 골라 둔다 (이어서 찾으려면 그대로, 새로 찾으려면 바로 치면 바뀐다)
 function onShow() {
   recording = false;
+  grow();
   flashUntil = 0;
   selected = 0;
   activeAct = 0;
@@ -431,9 +525,10 @@ function onShow() {
 
 (async () => {
   sites = await invoke('init').catch(() => sites);
+  if (store.get('magic.off') == null && sites.memokingOff) off = new Set(sites.memokingOff); // 저장하지 않는다: 캡슐을 누르기 전까지 메모킹을 따라간다
   renderModules();
   render();
-  invoke('sync_modules', { off: [...off] }).catch(() => {});
+  invoke('sync_modules', { off: offList() }).catch(() => {});
   await listen('magic:module', (e) => setModule(...e.payload)); // 알림 영역 메뉴 '설정 › 기능'
   await listen('magic:show', onShow);
   await listen('magic:hotkey', () => record(true)); // 알림 영역 메뉴의 '단축키 바꾸기'

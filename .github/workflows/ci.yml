@@ -31,7 +31,8 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Build installer
         working-directory: app
-        run: npx --yes @tauri-apps/cli@2 build
+        # 업데이트 서명은 릴리스에서만 (PR 에는 서명 키가 없다)
+        run: npx --yes @tauri-apps/cli@2 build --config tauri.ci.conf.json
       - uses: actions/upload-artifact@v4
         with:
           name: MagicKey-setup
