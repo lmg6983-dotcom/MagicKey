@@ -35,7 +35,8 @@
   - [x] **3-1** 설정 따라가기: MagicKey 에서 단축키 · 캡슐을 아직 바꾸지 않았으면 메모킹 매직키에서 쓰던 그대로 (옮겨 적지 않고 읽기만, 바꾸는 순간 MagicKey 설정으로)
   - [x] **3-2** 🏢 **OPMS 검색**(사내망)은 따로 설치하는 [MagicOPMS](https://github.com/lmg6983-dotcom/MagicOPMS)(Rust · Tauri 2)로 떼어 내요.
     MagicKey 는 사건번호 · 이름 · 초성처럼 OPMS 에 물을 글이면 "OPMS 에서 찾기" 줄로 MagicOPMS 를 불러요 — **기본값은 꺼짐**
-  - [x] **3-4a** 메모킹 0.77: MagicKey 가 있으면(`%APPDATA%\MemoKing\magickey.json`) 매직키 단축키를 넘기고, 없으면 지금처럼 + MagicKey 안내
+    - 저절로 찾기: 온전한 사건번호 · MagicOPMS 가 배운 번호 양식과 같은 꼴이면 고르기 전에 사건 6건 (MagicOPMS 와 같은 코어 `magicopms-core` 를 git 으로 가져다 씀)
+  - [x] **3-4a** 메모킹 0.77: MagicKey 가 켜져 있으면(`%APPDATA%\MemoKing\magickey.json` 의 `exe` · `pid`) 매직키 단축키를 넘기고, 끄면 다시 잡아요. 없으면 지금처럼 + MagicKey 안내
   - [ ] **3-4b** 몇 버전 뒤: 메모킹에서 매직키 · OPMS · "모두 보기" 창 · 파일 목록을 걷어내요
   - 🤖 **매직 에이전트**(이 PC 의 카나나2 AI)는 옮기지 않아요 — 메모킹 목록 창 검색창 ✦ 에 그대로 남아요 (두 벌이 되면 서로 다르게 답할 수 있어서)
 - [ ] **4단계** — 릴리스: MagicKey · MagicOPMS 를 먼저, 메모킹을 그다음에 (매직키가 하나도 없는 때가 없게)

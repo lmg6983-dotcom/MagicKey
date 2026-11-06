@@ -4,7 +4,8 @@
 
 use magickey_core::index::{self, Entry, Found};
 use magickey_core::memo::{self, Memo, MemoHit, Shelf};
-use magickey_core::{calc, date, opms, web, Answer};
+use magickey_core::{calc, date, web, Answer};
+use magicopms_core::{client as opms_client, search as opms_search, settings as opms_settings};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -130,14 +131,66 @@ impl Memos {
 }
 
 /// MagicOPMS (따로 설치하는 OPMS 찾기 앱) — 켜질 때 %APPDATA%\com.lmg6983.magicopms\magicopms.json 에 실행 파일 위치를 적는다
-struct MagicOpms(Option<PathBuf>);
+struct MagicOpms {
+    /// MagicOPMS 설정 폴더
+    dir: Option<PathBuf>,
+    /// 메모킹 설정 (MagicOPMS 설정에 없는 서버 주소 · 번호 양식은 여기서)
+    memoking: Option<PathBuf>,
+}
 
 impl MagicOpms {
     /// 실행 파일 (설치 · 삭제가 MagicKey 가 켜져 있는 사이에도 바뀌어 매번 본다)
     fn exe(&self) -> Option<PathBuf> {
-        let note: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(self.0.as_ref()?).ok()?).ok()?;
+        let note = opms_settings::read(&self.dir.as_ref()?.join("magicopms.json"));
         Some(PathBuf::from(note.get("exe")?.as_str()?)).filter(|e| e.is_file())
     }
+
+    /// MagicOPMS 가 쓰는 서버 주소 · 배운 번호 양식 (MagicOPMS 설정 > 메모킹 설정 — 같은 코어로)
+    fn settings(&self) -> opms_settings::Settings {
+        let own = self.dir.as_ref().map(|d| opms_settings::read(&d.join("settings.json"))).unwrap_or_default();
+        let mk = self.memoking.as_ref().map(|f| opms_settings::read(f)).unwrap_or_default();
+        opms_settings::effective(&own, &mk)
+    }
+}
+
+/// OPMS 저절로 찾기 — 사건번호를 온전히 썼거나 한 번 찾아 본 번호와 같은 꼴이면, 고르기 전에 사건을 보여 준다
+///   (메모킹 매직키와 같게: 정확한 것부터 6건, 나머지는 "OPMS 다른 n건 더 보기"). 짧게 기다리고 다시 하지 않는다
+#[derive(Serialize)]
+struct OpmsCase {
+    idx: String,
+    ourref: String,
+    yourref: String,
+    n_app: String,
+    applicant: String,
+    title: String,
+    accepted: String,
+}
+
+#[tauri::command]
+async fn opms_auto(text: String, mo: State<'_, MagicOpms>) -> Result<serde_json::Value, String> {
+    let s = mo.settings();
+    let q: String = text.trim().chars().take(40).collect();
+    if s.host.is_empty() || mo.exe().is_none() || !opms_search::auto_query(&q, &s.shapes) {
+        return Ok(serde_json::json!({ "cases": [], "total": 0 }));
+    }
+    let found = tauri::async_runtime::spawn_blocking(move || opms_client::quick_search(&s.host, &q, 60, Duration::from_secs(5))).await.map_err(|e| e.to_string())?;
+    let (rows, total) = found.map_err(|e| if e.offline { "사내망에 연결돼 있지 않아 OPMS 를 찾지 못했어요".to_string() } else { e.message })?;
+    let g = |r: &magicopms_core::Row, k: &str| magicopms_core::get(r, k).to_string();
+    let cases: Vec<OpmsCase> = rows
+        .iter()
+        .filter(|(_, score)| *score > 0)
+        .take(6)
+        .map(|(r, _)| OpmsCase {
+            idx: g(r, "idx"),
+            ourref: g(r, "ourref"),
+            yourref: g(r, "yourref"),
+            n_app: g(r, "n_app"),
+            applicant: g(r, "applicant"),
+            title: g(r, "title_kor"),
+            accepted: magicopms_core::resultset::clean_date(&g(r, "d_accept")),
+        })
+        .collect();
+    Ok(serde_json::json!({ "cases": cases, "total": total }))
 }
 
 /// OPMS 에서 찾기 — MagicOPMS 를 `--search=<글>` 로 (켜져 있으면 그 창에서 찾는다)
@@ -145,7 +198,7 @@ impl MagicOpms {
 fn open_opms(text: String, mo: State<MagicOpms>) -> Result<(), String> {
     let exe = mo.exe().ok_or("MagicOPMS 가 설치돼 있지 않아요")?;
     let q: String = text.lines().next().unwrap_or("").trim().chars().take(60).collect();
-    if !opms::looks_like_opms_query(&q) {
+    if opms_search::query_kind(&q).is_none() {
         return Err("OPMS 에서 찾을 글이 아니에요".into());
     }
     std::process::Command::new(exe).arg(format!("--search={q}")).spawn().map(|_| ()).map_err(|e| format!("MagicOPMS 를 열지 못했어요: {e}"))
@@ -171,6 +224,9 @@ struct QueryOut {
     remind: bool,
     /// 'OPMS 에서 찾기' 줄 (MagicOPMS 가 있고, 사건번호 · 이름 · 초성 같은 글)
     opms: bool,
+    /// 고르기 전에 저절로 찾을 글 (온전한 사건번호 · 찾아 본 번호와 같은 꼴, 서버 주소가 있음) → 창이 opms_auto 를 부른다
+    #[serde(rename = "opmsAuto")]
+    opms_auto: bool,
     #[serde(rename = "memoMore")]
     memo_more: usize,
     #[serde(flatten)]
@@ -190,6 +246,7 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
             .map(|answer| Calc { kind: "date", answer })
             .or_else(|| calc::calc(&text).map(|answer| Calc { kind: "calc", answer }))
     });
+    let show_opms = on("opms") && opms_search::query_kind(&text).is_some() && mo.exe().is_some();
     let date_calc = calc.as_ref().is_some_and(|c| c.as_ref().is_some_and(|c| c.kind == "date"));
     let new_memo = on("memo") && notes.can_make.load(Ordering::SeqCst);
     let (memos, memo_more) = memo::search(&notes.list.read().unwrap().clone(), &text, if on("notes") { 4 } else { 0 });
@@ -206,7 +263,8 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
         memos,
         new_memo,
         remind: new_memo && !date_calc && memo::mentions_date(&text),
-        opms: on("opms") && opms::looks_like_opms_query(&text) && mo.exe().is_some(),
+        opms: show_opms,
+        opms_auto: show_opms && { let s = mo.settings(); !s.host.is_empty() && opms_search::auto_query(text.trim(), &s.shapes) },
         memo_more,
         found,
         indexed: entries.len(),
@@ -517,7 +575,8 @@ fn main() {
             let notes = Memos::find(app.handle());
             let has_memo = notes.root.is_some();
             app.manage(notes);
-            let mo = MagicOpms(app.path().config_dir().ok().map(|d| d.join("com.lmg6983.magicopms").join("magicopms.json")));
+            let cfg = app.path().config_dir().ok();
+            let mo = MagicOpms { dir: cfg.as_ref().map(|d| d.join(opms_settings::APP_DIR)), memoking: cfg.map(|d| d.join("MemoKing").join("settings.json")) };
             let has_opms = mo.exe().is_some();
             app.manage(mo);
 
@@ -626,7 +685,7 @@ fn main() {
                 let _ = w.hide(); // 다른 곳을 누르면 숨는다
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, open_opms, act, copy, open_web, hide])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }

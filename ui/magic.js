@@ -37,6 +37,9 @@ const shownModules = () => MODULES.filter((m) => (!m.memo || sites.memo) && (!m.
 let sites = { web: [], ai: [], notice: null, hotkey: '', memo: false, opms: false }; // notice: 단축키를 못 잡았을 때 안내
 let recording = false; // 새 단축키를 기다리는 중
 let res = null; // 마지막 query 결과
+// OPMS 저절로 찾기 (사건번호를 온전히 썼거나 찾아 본 번호와 같은 꼴) — 치기를 잠깐 멈추면 한 번만 묻는다
+let auto = { query: '', cases: [], total: 0, error: '', loading: false };
+let autoTimer = 0;
 let rows = [];
 let selected = 0;
 let activeAct = 0;
@@ -75,6 +78,7 @@ function actionsFor(r) {
   switch (r.kind) {
     case 'new': case 'remind': return [{ id: 'save', label: '저장', text: true }, { id: 'saveOpen', label: '저장하고 열기', key: 'Ctrl+Enter', text: true }];
     case 'opms': return [{ id: 'open', label: 'MagicOPMS 에서 찾기' }];
+    case 'case': return [{ id: 'open', label: 'MagicOPMS 에서 열기' }, { id: 'copyRef', label: '관리번호 복사', text: true }];
     case 'memo': return [{ id: 'openMemo', label: '메모킹에서 열기' }];
     case 'app': return [{ id: 'open', label: '실행' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }];
     case 'folder': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '위 폴더에서 보기', key: 'Ctrl+Shift+E' }];
@@ -168,8 +172,13 @@ function row(r, index, query) {
     s.textContent = '글 속 날짜 · 시각에 메모킹이 알림을 맞춰요';
   } else if (r.kind === 'opms') {
     ico.textContent = '🏢';
-    t.textContent = 'OPMS 에서 찾기';
+    t.textContent = r.more ? `OPMS 다른 ${r.more.toLocaleString()}건 더 보기` : 'OPMS 에서 찾기';
     s.textContent = `'${query.slice(0, 40)}' — 사건번호 · 출원인 · 발명자 · 초성`;
+  } else if (r.kind === 'case') {
+    ico.textContent = '🏢';
+    t.append(highlighted([r.ourref, r.title].filter(Boolean).join(' '), query));
+    s.textContent = [r.applicant, r.n_app, r.accepted].filter(Boolean).join(' · ');
+    s.title = s.textContent;
   } else if (r.kind === 'memo') {
     ico.textContent = r.locked ? '🔒' : '📝';
     t.append(highlighted(r.title, query));
@@ -242,7 +251,15 @@ function render() {
   else if (query && res) {
     if (res.newMemo) put({ kind: 'new', mod: 'memo' }); // 메모킹 매직키처럼 맨 위 (Enter 로 바로 저장)
     if (res.remind) put({ kind: 'remind', mod: 'memo' }); // 내일 3시 치과 → 그때 알림
-    if (res.opms) put({ kind: 'opms', mod: 'opms' }); // 메모킹 매직키처럼 새 메모 바로 아래
+    if (res.opms) { // 메모킹 매직키처럼 새 메모 바로 아래
+      const a = auto.query === query ? auto : null;
+      if (a?.cases.length) {
+        section('OPMS', a.cases.length, 'opms');
+        a.cases.forEach((c) => put({ kind: 'case', mod: 'opms', ...c }));
+      } else if (a?.loading) note('OPMS 에서 찾는 중…');
+      else if (a?.error) note(a.error);
+      put({ kind: 'opms', mod: 'opms', more: a && a.total > a.cases.length ? a.total - a.cases.length : 0 });
+    }
     if (res.calc) put({ ...res.calc, mod: 'calc', text: query });
     if (res.site) put({ kind: 'site', mod: 'site', url: res.site });
     const ask = () => isOn('ai') && put({ kind: 'ai', mod: 'ai', sites: sites.ai });
@@ -347,6 +364,21 @@ async function search() {
   if (my !== seq || !out) return; // 더 새 입력이 있으면 버린다
   res = out;
   render();
+  if (out.opmsAuto) askOpms(text.trim());
+}
+
+// 저절로 찾기: 같은 글을 다시 묻지 않고, 늦게 온 답은 지금 글과 같을 때만 쓴다
+function askOpms(q) {
+  if (auto.query === q && !auto.error) return;
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(async () => {
+    auto = { query: q, cases: [], total: 0, error: '', loading: true };
+    render();
+    const got = await invoke('opms_auto', { text: q }).then((r) => ({ ...r, error: '' }), (err) => ({ cases: [], total: 0, error: String(err) }));
+    if (input.value.trim() !== q) return;
+    auto = { query: q, ...got, loading: false };
+    render();
+  }, 250);
 }
 
 const hide = () => invoke('hide');
@@ -367,6 +399,14 @@ async function run(i, act = 0) {
       input.value = ''; // 저장한 글은 다음에 열 때 남기지 않는다
       grow();
     } else if (r.kind === 'opms') msg = await invoke('open_opms', { text: input.value });
+    else if (r.kind === 'case') {
+      const ref = r.ourref || r.n_app || r.yourref;
+      if (a.id === 'copyRef') {
+        flash(true, await invoke('copy', { text: ref }));
+        return;
+      }
+      msg = await invoke('open_opms', { text: ref });
+    }
     else if (r.kind === 'memo') msg = await invoke('open_memo', { id: r.id });
     else if (r.kind === 'site') msg = await invoke('open_web', { kind: 'site', site: '', text: r.url });
     else if (r.kind === 'web' || r.kind === 'ai') msg = await invoke('open_web', { kind: r.kind, site: a.id, text: input.value });
