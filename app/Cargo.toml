@@ -18,8 +18,7 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-updater = "2"
 # OPMS 저절로 찾기 — MagicSystem 과 같은 코어 (찾기 규칙 · SQL · 서버와 주고받기 · 설정)
-#   주소는 예전 이름(MagicOPMS) 그대로 — GitHub 가 MagicSystem 으로 넘겨 준다 (Cargo.lock 과 맞게)
-magicsystem-core = { git = "https://github.com/lmg6983-dotcom/MagicOPMS", rev = "c9b7e79b3c26b292ec7cc58e7738fd402b040653", features = ["client"] }
+magicsystem-core = { git = "https://github.com/lmg6983-dotcom/MagicSystem", rev = "692d6c528ea206c4e2f054c290246228f7f7dc37", features = ["client"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
