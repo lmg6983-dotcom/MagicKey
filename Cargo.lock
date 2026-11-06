@@ -2246,7 +2246,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "magickey"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "magickey-core",
@@ -2265,7 +2265,7 @@ dependencies = [
 
 [[package]]
 name = "magickey-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "fancy-regex",
@@ -2276,7 +2276,7 @@ dependencies = [
 [[package]]
 name = "magicopms-core"
 version = "0.1.0"
-source = "git+https://github.com/lmg6983-dotcom/MagicOPMS?rev=7b8a71db2cc2601483aa94c2c39faef8441cd525#7b8a71db2cc2601483aa94c2c39faef8441cd525"
+source = "git+https://github.com/lmg6983-dotcom/MagicOPMS?rev=1d3be03dc0eb19ae52fd50120fc1c1d5ddbb3219#1d3be03dc0eb19ae52fd50120fc1c1d5ddbb3219"
 dependencies = [
  "fancy-regex",
  "indexmap 2.14.2",

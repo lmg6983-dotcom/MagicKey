@@ -672,8 +672,9 @@ fn main() {
                     key_label(&hotkey)
                 );
                 *app.state::<Hotkey>().notice.lock().unwrap() = Some(msg);
-                if memo::knows_magickey(&memoking) {
-                    retry_hotkey(app.handle().clone()); // 메모킹이 곧 키를 넘긴다 — 창을 띄우지 않고 기다린다
+                // 메모킹이 있으면 곧 키를 넘긴다(0.77~) — 창을 띄우지 않고 기다린다. 옛 메모킹이면 2분 뒤에 알린다
+                if memo::knows_magickey(&memoking) || app.state::<Arc<Memos>>().exe.is_some() {
+                    retry_hotkey(app.handle().clone());
                 } else {
                     toggle(app.handle());
                 }
