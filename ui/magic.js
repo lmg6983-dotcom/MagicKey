@@ -1,5 +1,5 @@
 // 매직키 창 — 치는 대로 계산 · 메모킹 메모 · 앱 · 폴더 · 파일 · 웹 검색 · 웹 AI 줄을 보여 주고, 고른 줄을 실행한다.
-//   ↑↓ 고르기 · ← → 할 일 고르기 · Enter 실행 · Ctrl+Enter 다른 실행(새 메모: 저장하고 열기) · Ctrl+Shift+C 경로 복사 · Ctrl+Shift+E 폴더 열기 · Esc 지우기 → 닫기
+//   ↑↓ 고르기 · ← → 할 일 고르기 · Enter 실행 · Shift+Enter 줄 바꿈 (여러 줄 메모: 첫 줄이 제목) · Ctrl+Enter 다른 실행(새 메모: 저장하고 열기) · Ctrl+Shift+C 경로 복사 · Ctrl+Shift+E 폴더 열기 · Esc 지우기 → 닫기
 //   아래 캡슐 = 기능, 누르면 켜고 끈다 (이 PC 에 기억) · 단축키 · 기능 설정은 알림 영역 ✦ 오른쪽 클릭 메뉴에도
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -352,6 +352,7 @@ async function run(i, act = 0) {
     if (r.kind === 'new' || r.kind === 'remind') {
       msg = await invoke('new_memo', { text: input.value, open: a.id === 'saveOpen', remind: r.kind === 'remind' });
       input.value = ''; // 저장한 글은 다음에 열 때 남기지 않는다
+      grow();
     } else if (r.kind === 'memo') msg = await invoke('open_memo', { id: r.id });
     else if (r.kind === 'site') msg = await invoke('open_web', { kind: 'site', site: '', text: r.url });
     else if (r.kind === 'web' || r.kind === 'ai') msg = await invoke('open_web', { kind: r.kind, site: a.id, text: input.value });
@@ -369,9 +370,16 @@ async function run(i, act = 0) {
   }
 }
 
+// 입력칸 높이를 글 줄 수에 맞춘다 (6줄까지, 그 위로는 칸 안에서 넘김)
+function grow() {
+  input.style.height = 'auto';
+  input.style.height = `${input.scrollHeight}px`;
+}
+
 let searchTimer = 0;
 let pending = false; // 친 글을 아직 찾지 않았다 (Enter 가 지난 글의 결과를 실행하지 않게)
 input.addEventListener('input', () => {
+  grow();
   selected = 0;
   pending = true;
   clearTimeout(searchTimer);
@@ -381,6 +389,7 @@ input.addEventListener('input', () => {
 
 function clearText() {
   input.value = '';
+  grow();
   selected = 0;
   search();
   input.focus();
@@ -441,7 +450,7 @@ input.addEventListener('keydown', (e) => {
     activeAct--;
     markAct();
     updateHint();
-  } else if (e.key === 'Enter') {
+  } else if (e.key === 'Enter' && !e.shiftKey) { // Shift+Enter 는 줄 바꿈
     e.preventDefault();
     const act = e.ctrlKey ? 1 : activeAct; // Ctrl+Enter: 두 번째 할 일
     (pending ? search() : Promise.resolve()).then(() => rows.length && run(selected, act));
@@ -451,6 +460,7 @@ input.addEventListener('keydown', (e) => {
 // 창이 떠오를 때마다: 지난 글은 남겨 두고 통째로 골라 둔다 (이어서 찾으려면 그대로, 새로 찾으려면 바로 치면 바뀐다)
 function onShow() {
   recording = false;
+  grow();
   flashUntil = 0;
   selected = 0;
   activeAct = 0;

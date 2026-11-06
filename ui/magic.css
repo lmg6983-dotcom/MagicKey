@@ -37,11 +37,11 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-grip span { width: 36px; height: 4px; border-radius: 4px; background: var(--sep); }
 .magic-grip:hover span { background: var(--muted); }
 
-.magic-top { display: flex; align-items: center; gap: 10px; padding: 4px 14px 12px 18px; }
+.magic-top { display: flex; align-items: flex-start; gap: 10px; padding: 4px 14px 12px 18px; }
 .magic-icon { font-size: 21px; line-height: 1.45; color: var(--brand); -webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.3); cursor: grab; }
-.magic-input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 20px; line-height: 1.45; caret-color: #e0a800; }
+.magic-input { flex: 1; min-width: 0; display: block; height: 29px; max-height: 174px; padding: 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; color: var(--text); font: inherit; font-size: 20px; line-height: 1.45; caret-color: #e0a800; }
 .magic-input::placeholder { color: var(--muted); }
-.magic-clear { flex: none; width: 24px; height: 24px; border: 0; border-radius: 50%; background: var(--fill-tab); color: var(--muted); font-size: 12px; cursor: pointer; }
+.magic-clear { flex: none; width: 24px; height: 24px; margin-top: 2.5px; border: 0; border-radius: 50%; background: var(--fill-tab); color: var(--muted); font-size: 12px; cursor: pointer; }
 .magic-clear:hover { color: var(--text); }
 .magic-note.action { color: var(--text); cursor: pointer; }
 .magic-note.action:hover { text-decoration: underline; }

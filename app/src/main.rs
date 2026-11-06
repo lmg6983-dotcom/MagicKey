@@ -295,7 +295,9 @@ fn new_memo(text: String, open: bool, remind: bool, notes: State<Arc<Memos>>) ->
         return Err("메모로 만들 글이 없어요".into());
     }
     let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    let file = std::env::temp_dir().join(format!("magickey-{}-{nanos}.txt", std::process::id()));
+    // 메모킹(Node)과 같은 임시 폴더: TEMP 먼저 (Rust 의 temp_dir 은 TMP 먼저라, 둘이 다른 PC 에서 메모킹이 파일을 거절한다)
+    let tmp = std::env::var_os("TEMP").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let file = tmp.join(format!("magickey-{}-{nanos}.txt", std::process::id()));
     std::fs::write(&file, text).map_err(|e| format!("글을 넘기지 못했어요: {e}"))?;
     let mut cmd = std::process::Command::new(exe);
     cmd.arg(format!("--new-memo-file={}", file.display()));

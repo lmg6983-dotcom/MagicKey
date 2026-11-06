@@ -21,8 +21,10 @@ pub const LOCKED_TITLE: &str = "잠긴 메모";
 pub struct Memo {
     pub id: String,
     pub title: String,
-    /// 찾기용 소문자 본문 (잠근 메모는 빈 글)
+    /// 본문 (읽는 글자만, 잠근 메모는 빈 글) · 찾기용 소문자 제목 · 본문 (글자 수가 같아 찾은 자리를 그대로 옮길 수 있다)
     body: String,
+    title_lower: String,
+    lower: String,
     pub locked: bool,
     pub updated: String,
     pub file: PathBuf,
@@ -56,7 +58,27 @@ pub fn can_make_memo(json: &str) -> bool {
 }
 
 static FRONT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\u{FEFF}?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)").unwrap());
-static LOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<!--\s*memoking-lock\s+v\d+\s").unwrap());
+// 잠근 메모 본문 전체의 모양 (메모킹 memo-lock.js LOCK_RE 와 같게): (제목 줄) (안내 한 줄) 암호문 주석 — 다른 글이 섞이면 보통 메모
+static LOCK: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r"^\u{FEFF}?\s*(?:#[^\n]*\n\s*)?(?:🔒 잠긴 메모예요\. 메모킹에서 비밀번호를 넣으면 열려요\.\s*)?",
+        r"<!--\s*memoking-lock\s+v\d+\s+n=\d+\s+s=[A-Za-z0-9+/=]+\s+i=[A-Za-z0-9+/=]+\s+c=[A-Za-z0-9+/=]+\s*-->\s*$"
+    ))
+    .unwrap()
+});
+
+/// 글자마다 소문자로 — 글자 수를 그대로 둔다 (소문자가 두 글자가 되는 드문 글자는 그대로)
+fn lower(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            let mut l = c.to_lowercase();
+            match (l.next(), l.next()) {
+                (Some(x), None) => x,
+                _ => c,
+            }
+        })
+        .collect()
+}
 static BLOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s{0,3}#{1,6}\s+|^\s*>\s?|^\s*(?:[-*+]|\d+[.)])(?:\s+|$)(?:\\?\[[ xX]\](?:\s+|$))?").unwrap());
 static INLINE: LazyLock<[(Regex, &'static str); 6]> = LazyLock::new(|| {
     [
@@ -131,7 +153,7 @@ pub fn parse(text: &str, file: PathBuf) -> Option<Memo> {
     let locked = LOCK.is_match(body).unwrap_or(false);
     let mut lines = plain_lines(body);
     let first = lines.next();
-    let title = match first {
+    let title: String = match first {
         Some(t) if !(locked && t.starts_with('🔒')) => t.chars().take(80).collect(),
         _ if locked => LOCKED_TITLE.into(),
         _ => UNTITLED.into(),
@@ -139,14 +161,15 @@ pub fn parse(text: &str, file: PathBuf) -> Option<Memo> {
     let body = if locked {
         String::new()
     } else {
-        let mut b: String = lines.collect::<Vec<_>>().join("\n").to_lowercase();
+        let mut b: String = lines.collect::<Vec<_>>().join("\n");
         if b.len() > MAX_BODY {
             let cut = (0..=MAX_BODY).rev().find(|&i| b.is_char_boundary(i)).unwrap_or(0);
             b.truncate(cut);
         }
         b
     };
-    Some(Memo { id: id.into(), title, body, locked, updated: front_value(front, "updated").unwrap_or("").into(), file })
+    let (title_lower, lower) = (lower(&title), lower(&body));
+    Some(Memo { id: id.into(), title, body, title_lower, lower, locked, updated: front_value(front, "updated").unwrap_or("").into(), file })
 }
 
 /// 메모 폴더의 .md 파일들 (메모킹처럼: 숨김 · 임시 파일, 맨 위 _memoking · attachments 폴더는 뺀다)
@@ -196,7 +219,12 @@ impl Shelf {
     }
 }
 
-/// 찾은 말 둘레 한 줄 (앞뒤 몇 글자)
+/// 찾은 말 둘레 한 줄 (앞뒤 몇 글자) — 소문자 본문에서 찾은 자리 → 원래 본문의 같은 글자 자리
+fn snippet_at(m: &Memo, at: usize) -> String {
+    let nth = m.lower[..at].chars().count();
+    snippet(&m.body, m.body.char_indices().nth(nth).map_or(m.body.len(), |(b, _)| b))
+}
+
 fn snippet(body: &str, at: usize) -> String {
     let start = body[..at].rfind('\n').map_or(0, |i| i + 1);
     let end = body[at..].find('\n').map_or(body.len(), |i| at + i);
@@ -209,14 +237,14 @@ fn snippet(body: &str, at: usize) -> String {
 
 /// 제목 · 본문에서 찾기 — 낱말마다 제목에 있으면 크게, 본문에만 있으면 작게. 같으면 최근 것이 앞
 pub fn search(memos: &[Memo], query: &str, limit: usize) -> (Vec<MemoHit>, usize) {
-    let q = query.trim().to_lowercase();
+    let q = lower(query.trim());
     if q.is_empty() || limit == 0 {
         return (Vec::new(), 0);
     }
     let terms: Vec<&str> = q.split_whitespace().collect();
     let mut hits: Vec<(f32, usize, &Memo, Option<usize>)> = Vec::new();
     'next: for (i, m) in memos.iter().enumerate() {
-        let title = m.title.to_lowercase();
+        let title = &m.title_lower;
         let mut score = 0.0;
         let mut first_body = None;
         for t in &terms {
@@ -224,7 +252,7 @@ pub fn search(memos: &[Memo], query: &str, limit: usize) -> (Vec<MemoHit>, usize
                 if at == 0 { 4.0 } else { 3.0 }
             } else if is_choseong_query(t) && choseong_index(&m.title, t).is_some() {
                 2.5
-            } else if let Some(at) = m.body.find(t) {
+            } else if let Some(at) = m.lower.find(t) {
                 first_body.get_or_insert(at);
                 1.0
             } else {
@@ -238,7 +266,7 @@ pub fn search(memos: &[Memo], query: &str, limit: usize) -> (Vec<MemoHit>, usize
     let out: Vec<MemoHit> = hits
         .into_iter()
         .take(limit)
-        .map(|(_, _, m, at)| MemoHit { id: m.id.clone(), title: m.title.clone(), snippet: at.map(|a| snippet(&m.body, a)).unwrap_or_default(), locked: m.locked })
+        .map(|(_, _, m, at)| MemoHit { id: m.id.clone(), title: m.title.clone(), snippet: at.map(|a| snippet_at(m, a)).unwrap_or_default(), locked: m.locked })
         .collect();
     let more = total - out.len();
     (out, more)
@@ -257,6 +285,8 @@ mod tests {
         let m = memo("a1", "2026-11-01T09:00:00+09:00", "# **회의** 메모\n\n- [ ] 견적서 [보내기](https://x.y)\n```\ncode\n```\n");
         assert_eq!((m.id.as_str(), m.title.as_str(), m.locked), ("a1", "회의 메모", false));
         assert_eq!(m.body, "견적서 보내기\ncode");
+        let n = memo("e", "", "회의\nKT 담당자 John 에게 전화");
+        assert_eq!(search(&[n], "john", 1).0[0].snippet, "KT 담당자 John 에게 전화", "찾기는 소문자로, 보여 주기는 원래 글로");
         assert_eq!(m.updated, "2026-11-01T09:00:00+09:00");
         assert!(parse("제목만 있는 파일", PathBuf::new()).is_none(), "머리말 · id 없으면 뺀다");
         assert!(parse("---\nid: ../x\n---\n본문", PathBuf::new()).is_none(), "이상한 id 는 뺀다");
@@ -270,6 +300,8 @@ mod tests {
         assert_eq!((m.title.as_str(), m.locked, m.body.as_str()), ("통장 비번", true, ""));
         let bare = memo("l2", "", "🔒 잠긴 메모예요. 메모킹에서 비밀번호를 넣으면 열려요.\n<!-- memoking-lock v1 n=1 s=A i=B c=C -->");
         assert_eq!(bare.title, LOCKED_TITLE);
+        let pasted = memo("p", "", "# 암호 예시\n<!-- memoking-lock v1 n=1 s=A i=B c=C -->\n이 줄은 보통 글");
+        assert!(!pasted.locked, "암호문 주석을 붙여 넣은 보통 메모는 잠근 메모가 아니다 (메모킹과 같게)");
     }
 
     #[test]
