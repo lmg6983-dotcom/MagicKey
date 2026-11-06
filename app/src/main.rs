@@ -5,7 +5,7 @@
 use magickey_core::index::{self, Entry, Found};
 use magickey_core::memo::{self, Memo, MemoHit, Shelf};
 use magickey_core::{calc, date, web, Answer};
-use magicopms_core::{client as opms_client, search as opms_search, settings as opms_settings};
+use magicsystem_core::{client as opms_client, search as opms_search, settings as opms_settings};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -130,24 +130,33 @@ impl Memos {
     }
 }
 
-/// MagicOPMS (따로 설치하는 OPMS 찾기 앱) — 켜질 때 %APPDATA%\com.lmg6983.magicopms\magicopms.json 에 실행 파일 위치를 적는다
-struct MagicOpms {
-    /// MagicOPMS 설정 폴더
-    dir: Option<PathBuf>,
-    /// 메모킹 설정 (MagicOPMS 설정에 없는 서버 주소 · 번호 양식은 여기서)
+/// MagicSystem (따로 설치하는 OPMS 찾기 앱, 예전 이름 MagicSystem) — 켜질 때 설정 폴더의 magicsystem.json 에 실행 파일 위치를 적는다
+struct MagicSystem {
+    /// %APPDATA% (설정 폴더들이 있는 곳)
+    config: Option<PathBuf>,
+    /// 메모킹 설정 (MagicSystem 설정에 없는 서버 주소 · 번호 양식은 여기서)
     memoking: Option<PathBuf>,
 }
 
-impl MagicOpms {
-    /// 실행 파일 (설치 · 삭제가 MagicKey 가 켜져 있는 사이에도 바뀌어 매번 본다)
-    fn exe(&self) -> Option<PathBuf> {
-        let note = opms_settings::read(&self.dir.as_ref()?.join("magicopms.json"));
-        Some(PathBuf::from(note.get("exe")?.as_str()?)).filter(|e| e.is_file())
+impl MagicSystem {
+    /// 설치된 MagicSystem: (설정 폴더, 실행 파일) — 새 이름이 먼저, 없으면 예전 MagicSystem
+    ///   (설치 · 삭제가 MagicKey 가 켜져 있는 사이에도 바뀌어 매번 본다)
+    fn found(&self) -> Option<(PathBuf, PathBuf)> {
+        let config = self.config.as_ref()?;
+        [(opms_settings::APP_DIR, "magicsystem.json"), (opms_settings::LEGACY_APP_DIR, "magicopms.json")].into_iter().find_map(|(dir, note)| {
+            let dir = config.join(dir);
+            let exe = PathBuf::from(opms_settings::read(&dir.join(note)).get("exe")?.as_str()?);
+            exe.is_file().then_some((dir, exe))
+        })
     }
 
-    /// MagicOPMS 가 쓰는 서버 주소 · 배운 번호 양식 (MagicOPMS 설정 > 메모킹 설정 — 같은 코어로)
+    fn exe(&self) -> Option<PathBuf> {
+        self.found().map(|(_, exe)| exe)
+    }
+
+    /// MagicSystem 이 쓰는 서버 주소 · 배운 번호 양식 (MagicSystem 설정 > 메모킹 설정 — 같은 코어로)
     fn settings(&self) -> opms_settings::Settings {
-        let own = self.dir.as_ref().map(|d| opms_settings::read(&d.join("settings.json"))).unwrap_or_default();
+        let own = self.found().map(|(d, _)| opms_settings::read(&d.join("settings.json"))).unwrap_or_default();
         let mk = self.memoking.as_ref().map(|f| opms_settings::read(f)).unwrap_or_default();
         opms_settings::effective(&own, &mk)
     }
@@ -167,7 +176,7 @@ struct OpmsCase {
 }
 
 #[tauri::command]
-async fn opms_auto(text: String, mo: State<'_, MagicOpms>) -> Result<serde_json::Value, String> {
+async fn opms_auto(text: String, mo: State<'_, MagicSystem>) -> Result<serde_json::Value, String> {
     let s = mo.settings();
     let q: String = text.trim().chars().take(40).collect();
     if s.host.is_empty() || mo.exe().is_none() || !opms_search::auto_query(&q, &s.shapes) {
@@ -175,7 +184,7 @@ async fn opms_auto(text: String, mo: State<'_, MagicOpms>) -> Result<serde_json:
     }
     let found = tauri::async_runtime::spawn_blocking(move || opms_client::quick_search(&s.host, &q, 60, Duration::from_secs(5))).await.map_err(|e| e.to_string())?;
     let (rows, total) = found.map_err(|e| if e.offline { "사내망에 연결돼 있지 않아 OPMS 를 찾지 못했어요".to_string() } else { e.message })?;
-    let g = |r: &magicopms_core::Row, k: &str| magicopms_core::get(r, k).to_string();
+    let g = |r: &magicsystem_core::Row, k: &str| magicsystem_core::get(r, k).to_string();
     let cases: Vec<OpmsCase> = rows
         .iter()
         .filter(|(_, score)| *score > 0)
@@ -187,21 +196,21 @@ async fn opms_auto(text: String, mo: State<'_, MagicOpms>) -> Result<serde_json:
             n_app: g(r, "n_app"),
             applicant: g(r, "applicant"),
             title: g(r, "title_kor"),
-            accepted: magicopms_core::resultset::clean_date(&g(r, "d_accept")),
+            accepted: magicsystem_core::resultset::clean_date(&g(r, "d_accept")),
         })
         .collect();
     Ok(serde_json::json!({ "cases": cases, "total": total }))
 }
 
-/// OPMS 에서 찾기 — MagicOPMS 를 `--search=<글>` 로 (켜져 있으면 그 창에서 찾는다)
+/// OPMS 에서 찾기 — MagicSystem 을 `--search=<글>` 로 (켜져 있으면 그 창에서 찾는다)
 #[tauri::command]
-fn open_opms(text: String, mo: State<MagicOpms>) -> Result<(), String> {
-    let exe = mo.exe().ok_or("MagicOPMS 가 설치돼 있지 않아요")?;
+fn open_opms(text: String, mo: State<MagicSystem>) -> Result<(), String> {
+    let exe = mo.exe().ok_or("MagicSystem 이 설치돼 있지 않아요")?;
     let q: String = text.lines().next().unwrap_or("").trim().chars().take(60).collect();
     if opms_search::query_kind(&q).is_none() {
         return Err("OPMS 에서 찾을 글이 아니에요".into());
     }
-    std::process::Command::new(exe).arg(format!("--search={q}")).spawn().map(|_| ()).map_err(|e| format!("MagicOPMS 를 열지 못했어요: {e}"))
+    std::process::Command::new(exe).arg(format!("--search={q}")).spawn().map(|_| ()).map_err(|e| format!("MagicSystem 을 열지 못했어요: {e}"))
 }
 
 #[derive(Serialize)]
@@ -222,7 +231,7 @@ struct QueryOut {
     new_memo: bool,
     /// '알림 맞춰 저장' 줄도 (첫 줄에 날짜 같은 말, 날짜 계산 글이 아님)
     remind: bool,
-    /// 'OPMS 에서 찾기' 줄 (MagicOPMS 가 있고, 사건번호 · 이름 · 초성 같은 글)
+    /// 'OPMS 에서 찾기' 줄 (MagicSystem 이 있고, 사건번호 · 이름 · 초성 같은 글)
     opms: bool,
     /// 고르기 전에 저절로 찾을 글 (온전한 사건번호 · 찾아 본 번호와 같은 꼴, 서버 주소가 있음) → 창이 opms_auto 를 부른다
     #[serde(rename = "opmsAuto")]
@@ -238,7 +247,7 @@ struct QueryOut {
 /// 칠 때마다: 계산 · 날짜 계산, 사이트 주소, 묻는 글인가, 앱 · 폴더 · 파일 (mods = 켜 둔 기능)
 ///   async: 메인 스레드 밖에서 돈다 (이름 수십만 개를 훑는 동안 창이 굳지 않게)
 #[tauri::command]
-async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, notes: State<'_, Arc<Memos>>, mo: State<'_, MagicOpms>) -> Result<QueryOut, String> {
+async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, notes: State<'_, Arc<Memos>>, mo: State<'_, MagicSystem>) -> Result<QueryOut, String> {
     let on = |m: &str| mods.iter().any(|x| x == m);
     let text: String = text.chars().take(200).collect();
     let calc = on("calc").then(|| {
@@ -292,7 +301,7 @@ fn key_label(s: &Shortcut) -> String {
 }
 
 /// 창의 기능 캡슐과 같은 것 — 알림 영역 메뉴 '설정' 에서도 켜고 끈다 (id 는 magic.js MODULES 와 같게)
-const MODULES: [(&str, &str); 8] = [("memo", "새 메모 (메모킹)"), ("notes", "메모 검색 (메모킹)"), ("opms", "OPMS 검색 (MagicOPMS)"), ("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
+const MODULES: [(&str, &str); 8] = [("memo", "새 메모 (메모킹)"), ("notes", "메모 검색 (메모킹)"), ("opms", "OPMS 검색 (MagicSystem)"), ("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
 
 /// 알림 영역 메뉴에서 글자 · 체크를 바꿔야 하는 줄
 struct TrayMenu {
@@ -398,12 +407,12 @@ struct Init {
     /// 메모킹 매직키에서 꺼 둔 기능 — 창에서 캡슐을 아직 만지지 않았으면 이대로
     #[serde(rename = "memokingOff")]
     memoking_off: Option<Vec<String>>,
-    /// MagicOPMS 가 있는가 (아니면 'OPMS' 캡슐을 숨긴다)
+    /// MagicSystem 이 있는가 (아니면 'OPMS' 캡슐을 숨긴다)
     opms: bool,
 }
 
 #[tauri::command]
-fn init(hk: State<Hotkey>, notes: State<Arc<Memos>>, mo: State<MagicOpms>) -> Init {
+fn init(hk: State<Hotkey>, notes: State<Arc<Memos>>, mo: State<MagicSystem>) -> Init {
     let hotkey = key_label(&hk.now.lock().unwrap());
     Init { web: web::WEB_ENGINES, ai: web::AI_SITES, notice: hk.notice.lock().unwrap().clone(), hotkey, memo: notes.root.is_some(), memoking_off: memo::magic_off(&notes.settings_json()), opms: mo.exe().is_some() }
 }
@@ -576,7 +585,7 @@ fn main() {
             let has_memo = notes.root.is_some();
             app.manage(notes);
             let cfg = app.path().config_dir().ok();
-            let mo = MagicOpms { dir: cfg.as_ref().map(|d| d.join(opms_settings::APP_DIR)), memoking: cfg.map(|d| d.join("MemoKing").join("settings.json")) };
+            let mo = MagicSystem { memoking: cfg.as_ref().map(|d| d.join("MemoKing").join("settings.json")), config: cfg };
             let has_opms = mo.exe().is_some();
             app.manage(mo);
 
