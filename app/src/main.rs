@@ -4,7 +4,7 @@
 
 use magickey_core::index::{self, Entry, Found};
 use magickey_core::memo::{self, Memo, MemoHit, Shelf};
-use magickey_core::{calc, date, web, Answer};
+use magickey_core::{calc, date, opms, web, Answer};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -128,6 +128,28 @@ impl Memos {
     }
 }
 
+/// MagicOPMS (따로 설치하는 OPMS 찾기 앱) — 켜질 때 %APPDATA%\com.lmg6983.magicopms\magicopms.json 에 실행 파일 위치를 적는다
+struct MagicOpms(Option<PathBuf>);
+
+impl MagicOpms {
+    /// 실행 파일 (설치 · 삭제가 MagicKey 가 켜져 있는 사이에도 바뀌어 매번 본다)
+    fn exe(&self) -> Option<PathBuf> {
+        let note: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(self.0.as_ref()?).ok()?).ok()?;
+        Some(PathBuf::from(note.get("exe")?.as_str()?)).filter(|e| e.is_file())
+    }
+}
+
+/// OPMS 에서 찾기 — MagicOPMS 를 `--search=<글>` 로 (켜져 있으면 그 창에서 찾는다)
+#[tauri::command]
+fn open_opms(text: String, mo: State<MagicOpms>) -> Result<(), String> {
+    let exe = mo.exe().ok_or("MagicOPMS 가 설치돼 있지 않아요")?;
+    let q: String = text.lines().next().unwrap_or("").trim().chars().take(60).collect();
+    if !opms::looks_like_opms_query(&q) {
+        return Err("OPMS 에서 찾을 글이 아니에요".into());
+    }
+    std::process::Command::new(exe).arg(format!("--search={q}")).spawn().map(|_| ()).map_err(|e| format!("MagicOPMS 를 열지 못했어요: {e}"))
+}
+
 #[derive(Serialize)]
 struct Calc {
     kind: &'static str,
@@ -146,6 +168,8 @@ struct QueryOut {
     new_memo: bool,
     /// '알림 맞춰 저장' 줄도 (첫 줄에 날짜 같은 말, 날짜 계산 글이 아님)
     remind: bool,
+    /// 'OPMS 에서 찾기' 줄 (MagicOPMS 가 있고, 사건번호 · 이름 · 초성 같은 글)
+    opms: bool,
     #[serde(rename = "memoMore")]
     memo_more: usize,
     #[serde(flatten)]
@@ -157,7 +181,7 @@ struct QueryOut {
 /// 칠 때마다: 계산 · 날짜 계산, 사이트 주소, 묻는 글인가, 앱 · 폴더 · 파일 (mods = 켜 둔 기능)
 ///   async: 메인 스레드 밖에서 돈다 (이름 수십만 개를 훑는 동안 창이 굳지 않게)
 #[tauri::command]
-async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, notes: State<'_, Arc<Memos>>) -> Result<QueryOut, String> {
+async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, notes: State<'_, Arc<Memos>>, mo: State<'_, MagicOpms>) -> Result<QueryOut, String> {
     let on = |m: &str| mods.iter().any(|x| x == m);
     let text: String = text.chars().take(200).collect();
     let calc = on("calc").then(|| {
@@ -181,6 +205,7 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
         memos,
         new_memo,
         remind: new_memo && !date_calc && memo::mentions_date(&text),
+        opms: on("opms") && opms::looks_like_opms_query(&text) && mo.exe().is_some(),
         memo_more,
         found,
         indexed: entries.len(),
@@ -208,7 +233,7 @@ fn key_label(s: &Shortcut) -> String {
 }
 
 /// 창의 기능 캡슐과 같은 것 — 알림 영역 메뉴 '설정' 에서도 켜고 끈다 (id 는 magic.js MODULES 와 같게)
-const MODULES: [(&str, &str); 7] = [("memo", "새 메모 (메모킹)"), ("notes", "메모 검색 (메모킹)"), ("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
+const MODULES: [(&str, &str); 8] = [("memo", "새 메모 (메모킹)"), ("notes", "메모 검색 (메모킹)"), ("opms", "OPMS 검색 (MagicOPMS)"), ("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
 
 /// 알림 영역 메뉴에서 글자 · 체크를 바꿔야 하는 줄
 struct TrayMenu {
@@ -267,12 +292,14 @@ struct Init {
     /// 메모킹 매직키에서 꺼 둔 기능 — 창에서 캡슐을 아직 만지지 않았으면 이대로
     #[serde(rename = "memokingOff")]
     memoking_off: Option<Vec<String>>,
+    /// MagicOPMS 가 있는가 (아니면 'OPMS' 캡슐을 숨긴다)
+    opms: bool,
 }
 
 #[tauri::command]
-fn init(hk: State<Hotkey>, notes: State<Arc<Memos>>) -> Init {
+fn init(hk: State<Hotkey>, notes: State<Arc<Memos>>, mo: State<MagicOpms>) -> Init {
     let hotkey = key_label(&hk.now.lock().unwrap());
-    Init { web: web::WEB_ENGINES, ai: web::AI_SITES, notice: hk.notice.lock().unwrap().clone(), hotkey, memo: notes.root.is_some(), memoking_off: memo::magic_off(&notes.settings_json()) }
+    Init { web: web::WEB_ENGINES, ai: web::AI_SITES, notice: hk.notice.lock().unwrap().clone(), hotkey, memo: notes.root.is_some(), memoking_off: memo::magic_off(&notes.settings_json()), opms: mo.exe().is_some() }
 }
 
 /// 메모 열기 — 메모킹에게 `--open-memo=<id>` 로 (꺼져 있으면 켜면서 연다). 메모킹 실행 파일을 못 찾으면 .md 파일을 기본 앱으로
@@ -441,6 +468,9 @@ fn main() {
             let notes = Memos::find(app.handle());
             let has_memo = notes.root.is_some();
             app.manage(notes);
+            let mo = MagicOpms(app.path().config_dir().ok().map(|d| d.join("com.lmg6983.magicopms").join("magicopms.json")));
+            let has_opms = mo.exe().is_some();
+            app.manage(mo);
 
             let file = dir.join("hotkey.txt");
             // 내가 바꾼 키 > 메모킹 매직키에서 쓰던 키 > Ctrl+Alt+Space
@@ -457,8 +487,12 @@ fn main() {
             let hotkey_item = MenuItem::with_id(app, "hotkey", "단축키 바꾸기…", true, None::<&str>)?;
             let mods = MODULES
                 .iter()
-                .filter(|(id, _)| has_memo || !matches!(*id, "memo" | "notes")) // 메모킹이 없으면 메모 줄도 없다
-                .map(|(id, name)| CheckMenuItem::with_id(app, format!("mod:{id}"), name, true, true, None::<&str>))
+                .filter(|(id, _)| match *id {
+                    "memo" | "notes" => has_memo, // 메모킹이 없으면 메모 줄도 없다
+                    "opms" => has_opms,
+                    _ => true,
+                })
+                .map(|(id, name)| CheckMenuItem::with_id(app, format!("mod:{id}"), name, true, *id != "opms", None::<&str>))
                 .collect::<tauri::Result<Vec<_>>>()?;
             let autostart = CheckMenuItem::with_id(app, "autostart", "Windows 시작할 때 켜기", true, app.autolaunch().is_enabled().unwrap_or(false), None::<&str>)?;
             let reindex = MenuItem::with_id(app, "reindex", "파일 목록 새로 만들기", true, None::<&str>)?;
@@ -527,7 +561,7 @@ fn main() {
                 let _ = w.hide(); // 다른 곳을 누르면 숨는다
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, act, copy, open_web, hide])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, open_opms, act, copy, open_web, hide])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }

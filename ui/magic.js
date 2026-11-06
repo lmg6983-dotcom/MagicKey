@@ -14,6 +14,7 @@ const box = document.getElementById('magic');
 
 const MODULES = [
   { id: 'memo', chip: '새 메모', name: '새 메모: 쓴 글을 메모킹 새 메모로 저장 (Enter 저장, Ctrl+Enter 저장하고 열기)', memo: true },
+  { id: 'opms', chip: 'OPMS', name: 'OPMS 검색: 사건번호 · 출원인 · 발명자 · 초성을 쓰면 MagicOPMS 로 찾기 (사내망)', opms: true, defaultOff: true },
   { id: 'notes', chip: '메모', name: '메모 검색: 메모킹 메모의 제목 · 내용에서 찾아 메모킹으로 열기 (메모 폴더는 읽기만)', memo: true },
   { id: 'apps', chip: '앱', name: '앱 검색: 시작 메뉴 프로그램을 바로 실행' },
   { id: 'files', chip: '파일', name: '파일 검색: PC 의 파일 · 폴더 이름을 찾아 열기 (내용은 읽지 않음)' },
@@ -26,10 +27,14 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 기억 못 해도 지금은 된다 */ } },
 };
 let off = new Set(store.get('magic.off') ?? []); // 캡슐로 꺼 둔 기능 (아직 만지지 않았으면 메모킹 매직키 설정을 따른다 — init 뒤)
-const isOn = (id) => !off.has(id);
-const shownModules = () => MODULES.filter((m) => !m.memo || sites.memo); // 메모킹이 없으면 '메모' 캡슐은 없다
+let optIn = new Set(store.get('magic.on') ?? []); // 기본값이 꺼짐인 기능(OPMS) 중 켠 것
+const DEFAULT_OFF = new Set(MODULES.filter((m) => m.defaultOff).map((m) => m.id));
+const isOn = (id) => (DEFAULT_OFF.has(id) ? optIn.has(id) : !off.has(id));
+const offList = () => MODULES.map((m) => m.id).filter((id) => !isOn(id));
+// 메모킹이 없으면 '메모' 캡슐, MagicOPMS 가 없으면 'OPMS' 캡슐은 없다
+const shownModules = () => MODULES.filter((m) => (!m.memo || sites.memo) && (!m.opms || sites.opms));
 
-let sites = { web: [], ai: [], notice: null, hotkey: '', memo: false }; // notice: 단축키를 못 잡았을 때 안내
+let sites = { web: [], ai: [], notice: null, hotkey: '', memo: false, opms: false }; // notice: 단축키를 못 잡았을 때 안내
 let recording = false; // 새 단축키를 기다리는 중
 let res = null; // 마지막 query 결과
 let rows = [];
@@ -69,6 +74,7 @@ const siteLabel = (s) => (s.paste ? `${s.name} (복사해 열기)` : s.name);
 function actionsFor(r) {
   switch (r.kind) {
     case 'new': case 'remind': return [{ id: 'save', label: '저장', text: true }, { id: 'saveOpen', label: '저장하고 열기', key: 'Ctrl+Enter', text: true }];
+    case 'opms': return [{ id: 'open', label: 'MagicOPMS 에서 찾기' }];
     case 'memo': return [{ id: 'openMemo', label: '메모킹에서 열기' }];
     case 'app': return [{ id: 'open', label: '실행' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }];
     case 'folder': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '위 폴더에서 보기', key: 'Ctrl+Shift+E' }];
@@ -91,16 +97,18 @@ function renderModules() {
     chip.setAttribute('aria-pressed', String(isOn(m.id)));
     chip.append(el('span', 'chip-dot'), m.chip);
     chip.addEventListener('mousedown', (e) => e.preventDefault()); // 입력 칸 포커스 유지
-    chip.addEventListener('click', () => setModule(m.id, off.has(m.id)));
+    chip.addEventListener('click', () => setModule(m.id, !isOn(m.id)));
     return chip;
   }));
 }
 
 function setModule(id, on) {
-  if (on) off.delete(id);
-  else off.add(id);
-  store.set('magic.off', [...off]);
-  invoke('sync_modules', { off: [...off] }).catch(() => {}); // 알림 영역 메뉴 체크도 같게
+  const set = DEFAULT_OFF.has(id) ? optIn : off;
+  if (on === DEFAULT_OFF.has(id)) set.add(id);
+  else set.delete(id);
+  if (DEFAULT_OFF.has(id)) store.set('magic.on', [...optIn]);
+  else store.set('magic.off', [...off]);
+  invoke('sync_modules', { off: offList() }).catch(() => {}); // 알림 영역 메뉴 체크도 같게
   renderModules();
   search();
 }
@@ -158,6 +166,10 @@ function row(r, index, query) {
     ico.textContent = '⏰';
     t.textContent = '알림 맞춰 저장';
     s.textContent = '글 속 날짜 · 시각에 메모킹이 알림을 맞춰요';
+  } else if (r.kind === 'opms') {
+    ico.textContent = '🏢';
+    t.textContent = 'OPMS 에서 찾기';
+    s.textContent = `'${query.slice(0, 40)}' — 사건번호 · 출원인 · 발명자 · 초성`;
   } else if (r.kind === 'memo') {
     ico.textContent = r.locked ? '🔒' : '📝';
     t.append(highlighted(r.title, query));
@@ -230,6 +242,7 @@ function render() {
   else if (query && res) {
     if (res.newMemo) put({ kind: 'new', mod: 'memo' }); // 메모킹 매직키처럼 맨 위 (Enter 로 바로 저장)
     if (res.remind) put({ kind: 'remind', mod: 'memo' }); // 내일 3시 치과 → 그때 알림
+    if (res.opms) put({ kind: 'opms', mod: 'opms' }); // 메모킹 매직키처럼 새 메모 바로 아래
     if (res.calc) put({ ...res.calc, mod: 'calc', text: query });
     if (res.site) put({ kind: 'site', mod: 'site', url: res.site });
     const ask = () => isOn('ai') && put({ kind: 'ai', mod: 'ai', sites: sites.ai });
@@ -353,7 +366,8 @@ async function run(i, act = 0) {
       msg = await invoke('new_memo', { text: input.value, open: a.id === 'saveOpen', remind: r.kind === 'remind' });
       input.value = ''; // 저장한 글은 다음에 열 때 남기지 않는다
       grow();
-    } else if (r.kind === 'memo') msg = await invoke('open_memo', { id: r.id });
+    } else if (r.kind === 'opms') msg = await invoke('open_opms', { text: input.value });
+    else if (r.kind === 'memo') msg = await invoke('open_memo', { id: r.id });
     else if (r.kind === 'site') msg = await invoke('open_web', { kind: 'site', site: '', text: r.url });
     else if (r.kind === 'web' || r.kind === 'ai') msg = await invoke('open_web', { kind: r.kind, site: a.id, text: input.value });
     else msg = await invoke('act', { action: a.id, path: r.path });
@@ -474,7 +488,7 @@ function onShow() {
   if (store.get('magic.off') == null && sites.memokingOff) off = new Set(sites.memokingOff); // 저장하지 않는다: 캡슐을 누르기 전까지 메모킹을 따라간다
   renderModules();
   render();
-  invoke('sync_modules', { off: [...off] }).catch(() => {});
+  invoke('sync_modules', { off: offList() }).catch(() => {});
   await listen('magic:module', (e) => setModule(...e.payload)); // 알림 영역 메뉴 '설정 › 기능'
   await listen('magic:show', onShow);
   await listen('magic:hotkey', () => record(true)); // 알림 영역 메뉴의 '단축키 바꾸기'
