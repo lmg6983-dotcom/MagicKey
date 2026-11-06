@@ -6,7 +6,7 @@ on:
   workflow_dispatch: # 태그를 올릴 수 없을 때: 여기서 태그와 릴리스를 함께 만든다
     inputs:
       tag:
-        description: "릴리스 태그 (예: v0.1.0)"
+        description: "릴리스 태그 (예: v0.3.0)"
         required: true
 
 permissions:
@@ -15,18 +15,53 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      # 자동 업데이트 서명 키 (저장소 Settings › Secrets and variables › Actions)
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check signing key
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY 가 없어요. 저장소 Settings › Secrets › Actions 에 자동 업데이트 서명 키를 넣어 주세요"
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p magickey-core
-      - name: Build installer
+      - name: Build installer (signed for updates)
         working-directory: app
         run: npx --yes @tauri-apps/cli@2 build
+      # 자동 업데이트가 읽는 latest.json: 버전 · 설치 파일 주소 · 서명
+      - name: Write latest.json
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $sig = Get-Content "$($exe.FullName).sig" -Raw
+          $version = $env:TAG.TrimStart('v')
+          $notes = if (Test-Path "docs/releases/$env:TAG.md") { Get-Content "docs/releases/$env:TAG.md" -Raw } else { "" }
+          @{
+            version = $version
+            notes = $notes
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = @{
+              "windows-x86_64" = @{
+                signature = $sig.Trim()
+                url = "https://github.com/${{ github.repository }}/releases/download/$env:TAG/$($exe.Name)"
+              }
+            }
+          } | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM target/release/bundle/nsis/latest.json
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
+          tag_name: ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
-          name: MagicKey ${{ inputs.tag || github.ref_name }}
-          body_path: docs/releases/${{ inputs.tag || github.ref_name }}.md
-          files: target/release/bundle/nsis/*.exe
+          name: MagicKey ${{ env.TAG }}
+          body_path: docs/releases/${{ env.TAG }}.md
+          make_latest: true
+          files: |
+            target/release/bundle/nsis/*-setup.exe
+            target/release/bundle/nsis/*-setup.exe.sig
+            target/release/bundle/nsis/latest.json

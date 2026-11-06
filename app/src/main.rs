@@ -14,6 +14,7 @@ use std::time::{Duration, SystemTime};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::Wry;
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_updater::{Update, UpdaterExt};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -238,8 +239,54 @@ const MODULES: [(&str, &str); 8] = [("memo", "새 메모 (메모킹)"), ("notes"
 /// 알림 영역 메뉴에서 글자 · 체크를 바꿔야 하는 줄
 struct TrayMenu {
     open: MenuItem<Wry>,
+    /// 업데이트 확인 · 설치 (글로 지금 상태를 보인다)
+    update: MenuItem<Wry>,
     hotkey: MenuItem<Wry>,
     mods: Vec<CheckMenuItem<Wry>>,
+}
+
+// ---------- 자동 업데이트 ----------
+//   GitHub Release 의 latest.json 을 본다 (서명이 맞는 설치 파일만). 켜고 1분 뒤 · 6시간마다 조용히 확인하고,
+//   새 버전이 있으면 알림 영역 메뉴에 "v… 으로 업데이트" — 누르면 받아서 설치하고 다시 켠다
+
+/// 찾아 둔 새 버전 (누르면 설치)
+#[derive(Default)]
+struct PendingUpdate(Mutex<Option<Update>>);
+
+fn update_text(app: &AppHandle, text: &str) {
+    let _ = app.state::<TrayMenu>().update.set_text(text);
+}
+
+/// 새 버전 확인 — 있으면 메뉴에 띄워 둔다
+async fn check_update(app: AppHandle) {
+    let found = match app.updater() {
+        Ok(u) => u.check().await,
+        Err(e) => Err(e),
+    };
+    match found {
+        Ok(Some(u)) => {
+            update_text(&app, &format!("✨ v{} 으로 업데이트", u.version));
+            if let Some(tray) = app.tray_by_id("main") {
+                let _ = tray.set_tooltip(Some(format!("MagicKey — 새 버전 v{} 이 있어요 (✦ 오른쪽 클릭 › 설정)", u.version)));
+            }
+            *app.state::<PendingUpdate>().0.lock().unwrap() = Some(u);
+        }
+        Ok(None) => update_text(&app, &format!("최신 버전이에요 (v{})", env!("CARGO_PKG_VERSION"))),
+        Err(_) => update_text(&app, "업데이트를 확인하지 못했어요 — 눌러서 다시"),
+    }
+}
+
+/// 메뉴를 눌렀을 때: 찾아 둔 새 버전이 있으면 설치 (설치 파일이 MagicKey 를 끄고 새로 켠다), 없으면 확인
+async fn update_clicked(app: AppHandle) {
+    let pending = app.state::<PendingUpdate>().0.lock().unwrap().take();
+    let Some(u) = pending else {
+        update_text(&app, "업데이트 확인 중…");
+        return check_update(app).await;
+    };
+    update_text(&app, &format!("v{} 받는 중…", u.version));
+    if let Err(e) = u.download_and_install(|_, _| {}, || {}).await {
+        update_text(&app, &format!("업데이트하지 못했어요 ({e}) — 눌러서 다시"));
+    }
 }
 
 /// 알림 영역 아이콘 · 메뉴에 지금 단축키를 쓴다 (못 잡았으면 그렇다고)
@@ -453,6 +500,7 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _, e| {
@@ -496,12 +544,25 @@ fn main() {
                 .collect::<tauri::Result<Vec<_>>>()?;
             let autostart = CheckMenuItem::with_id(app, "autostart", "Windows 시작할 때 켜기", true, app.autolaunch().is_enabled().unwrap_or(false), None::<&str>)?;
             let reindex = MenuItem::with_id(app, "reindex", "파일 목록 새로 만들기", true, None::<&str>)?;
+            let update = MenuItem::with_id(app, "update", format!("업데이트 확인 (v{})", env!("CARGO_PKG_VERSION")), true, None::<&str>)?;
             let sep = || PredefinedMenuItem::separator(app);
             let feats = Submenu::with_items(app, "기능", true, &mods.iter().map(|m| m as &dyn tauri::menu::IsMenuItem<Wry>).collect::<Vec<_>>())?;
-            let settings = Submenu::with_items(app, "설정", true, &[&hotkey_item, &feats, &sep()?, &autostart, &reindex])?;
+            let settings = Submenu::with_items(app, "설정", true, &[&hotkey_item, &feats, &sep()?, &autostart, &reindex, &sep()?, &update])?;
             let quit = MenuItem::with_id(app, "quit", "끝내기", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &sep()?, &settings, &sep()?, &quit])?;
-            app.manage(TrayMenu { open, hotkey: hotkey_item, mods });
+            app.manage(TrayMenu { open, update, hotkey: hotkey_item, mods });
+            app.manage(PendingUpdate::default());
+            // 켜고 1분 뒤 · 그 뒤 6시간마다 조용히 확인 (로그인 직후 네트워크가 늦게 잡혀도 되게)
+            let h = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(60));
+                loop {
+                    if h.state::<PendingUpdate>().0.lock().unwrap().is_none() {
+                        tauri::async_runtime::block_on(check_update(h.clone()));
+                    }
+                    std::thread::sleep(Duration::from_secs(6 * 3600));
+                }
+            });
             TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().cloned().ok_or("아이콘이 없어요")?)
                 .menu(&menu)
@@ -525,6 +586,9 @@ fn main() {
                         idx.touch();
                     }
                     "quit" => app.exit(0),
+                    "update" => {
+                        tauri::async_runtime::spawn(update_clicked(app.clone()));
+                    }
                     id => {
                         if let Some(m) = id.strip_prefix("mod:") {
                             let on = app.state::<TrayMenu>().mods.iter().find(|i| i.id().as_ref() == id).and_then(|i| i.is_checked().ok());

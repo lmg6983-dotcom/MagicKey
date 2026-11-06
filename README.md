@@ -65,6 +65,7 @@
 - ⌨️ **단축키 바꾸기** — 고른 뒤 새 조합을 누르면 끝. `Ctrl` · `Alt` · `Win` 중 하나와 함께 눌러요 (예: `Ctrl+Shift+Space`, `Alt+Q`). 다른 프로그램이 쓰는 키면 바꾸지 않고 알려 줘요
 - 🧩 **기능** — 창 아래 캡슐과 같아요. 어느 쪽에서 바꿔도 함께 바뀌어요
 - 🚀 **Windows 시작할 때 켜기** — 켜 두면 로그인할 때 알림 영역에서 대기해요
+- ✨ **업데이트 확인** — 켜고 1분 뒤 · 6시간마다 조용히 확인해요. 새 버전이 있으면 이 줄이 `✨ v… 으로 업데이트` 로 바뀌고, 누르면 받아서 설치해요 (서명이 맞는 설치 파일만)
 - 🔄 **파일 목록 새로 만들기** — 방금 만든 파일이 안 찾아질 때 (평소엔 10분마다 알아서)
 
 바꾼 단축키는 이 PC 에 기억해요 (`%LOCALAPPDATA%\com.lmg6983.magickey\hotkey.txt`).
@@ -76,6 +77,15 @@
 > [!TIP]
 > 메모킹과 함께 쓰면 `Ctrl+Alt+Space` 가 겹쳐요. 메모킹은 창을 닫아도 알림 영역에 남아 키를 잡고 있어요.
 > 단축키를 못 잡으면 처음 켤 때 알려 주고, 그 안내를 누르거나 ✦ 오른쪽 클릭 › 설정 › 단축키 바꾸기로 다른 키를 고르면 돼요.
+
+## 릴리스 (관리자)
+
+1. `docs/releases/vX.Y.Z.md` 에 릴리스 글을 쓰고, `Cargo.toml` · `app/tauri.conf.json` 의 버전을 맞춰요
+2. `vX.Y.Z` 태그를 올리거나 Actions › Release 를 태그 이름으로 돌려요 → 서명된 설치 파일 · `latest.json` 이 Release 에 붙어요
+3. 자동 업데이트 서명 키는 저장소 **Settings › Secrets and variables › Actions** 의 `TAURI_SIGNING_PRIVATE_KEY` (비밀번호가 있으면 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). 공개 키는 `app/tauri.conf.json` 에 있어요
+
+> [!WARNING]
+> 서명 키를 잃으면 이미 설치된 MagicKey 는 그 뒤 버전으로 자동 업데이트할 수 없어요. 안전한 곳에 따로 보관해 주세요.
 
 ## 빌드
 
