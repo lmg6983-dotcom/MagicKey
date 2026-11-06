@@ -50,6 +50,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-results:empty { display: none; }
 
 /* 기능마다 색 하나 — 아래 캡슐의 점 · 결과 머리말의 점이 같은 색 */
+[data-mod="notes"] { --mod: #e0a800; }
 [data-mod="apps"] { --mod: #f76707; }
 [data-mod="files"] { --mod: #1098ad; }
 [data-mod="calc"] { --mod: #2f9e44; }

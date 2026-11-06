@@ -13,12 +13,13 @@
 
 </div>
 
-[메모킹](https://github.com/lmg6983-dotcom/MemoKing)의 매직키를 메모 없이 따로 떼어 Rust로 다시 만들었어요.
+[메모킹](https://github.com/lmg6983-dotcom/MemoKing)의 매직키를 따로 떼어 Rust로 다시 만들었어요. 메모킹이 있으면 메모도 찾아요 ([함께 쓰기](docs/memoking.md)).
 
 ## 기능
 
 | | 이렇게 쓰면 | 이렇게 돼요 |
 |---|---|---|
+| 📝 **메모** | `견적서` · `ㅎㅇㄹ` | [메모킹](https://github.com/lmg6983-dotcom/MemoKing) 메모를 제목 · 내용으로 찾아 메모킹으로 열기 ([메모킹이 있을 때만](docs/memoking.md)) |
 | 🚀 **앱** | `카톡` · `chrm` | 시작 메뉴 프로그램 실행 |
 | 📁 **파일** | `견적서` · `ㄱㅈㅅ` · `P20261170` | 파일 · 폴더 이름으로 찾아 열기 (초성, 기호 빼고도) |
 | 🧮 **계산** | `1,200 × 3` · `15% * 80000` · `5 inch to cm` | 결과를 Enter 로 복사 |
@@ -40,7 +41,7 @@
 | `Ctrl+Shift+C` · `Ctrl+Shift+E` | 경로 복사 · 폴더 열기 |
 | `Esc` | 지우기 → 닫기 |
 
-아래 캡슐(앱 · 파일 · 계산 · 웹 · AI)을 누르면 그 기능을 켜고 꺼요.
+아래 캡슐(메모 · 앱 · 파일 · 계산 · 웹 · AI)을 누르면 그 기능을 켜고 꺼요.
 
 ## 설정
 
@@ -50,7 +51,7 @@
 열기                    Ctrl+Alt+Space
 ──────────────
 설정 ▸  단축키 바꾸기…   Ctrl+Alt+Space
-        기능 ▸          ☑ 앱 검색 · 파일 검색 · 계산 · 웹 검색 · 웹 AI
+        기능 ▸          ☑ 메모 검색 · 앱 검색 · 파일 검색 · 계산 · 웹 검색 · 웹 AI
         ──────────
         ☐ Windows 시작할 때 켜기
         파일 목록 새로 만들기
@@ -76,12 +77,12 @@
 ## 빌드
 
 ```bash
-cargo test -p magickey-core          # 계산 · 날짜 · 색인 · 웹 로직 테스트 (어느 OS 에서나)
+cargo test -p magickey-core          # 계산 · 날짜 · 색인 · 메모 · 웹 로직 테스트 (어느 OS 에서나)
 cd app && npx @tauri-apps/cli@2 build # Windows 설치 파일 (target/release/bundle/nsis)
 ```
 
 ```
-core/  UI 없는 로직 (calc · date · index · web · text)
+core/  UI 없는 로직 (calc · date · index · memo · web · text)
 app/   Tauri 2 앱 (단축키 · 알림 영역 · 명령)
 ui/    입력창 (HTML · CSS · JS, 빌드 도구 없음)
 ```

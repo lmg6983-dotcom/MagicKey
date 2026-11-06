@@ -2182,6 +2182,7 @@ dependencies = [
  "chrono",
  "fancy-regex",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,9 +1,10 @@
 //! 매직키 코어 — 창(UI) 없이 테스트하는 로직.
-//!   calc: 계산식 · date: 날짜 계산 · index: 앱 · 파일 · 폴더 이름 색인 · web: 웹 검색 · AI 사이트 · text: 초성 검색
+//!   calc: 계산식 · date: 날짜 계산 · index: 앱 · 파일 · 폴더 이름 색인 · memo: 메모킹 메모 찾기 · web: 웹 검색 · AI 사이트 · text: 초성 검색
 
 pub mod calc;
 pub mod date;
 pub mod index;
+pub mod memo;
 pub mod text;
 pub mod web;
 
