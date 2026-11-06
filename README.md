@@ -82,7 +82,8 @@
 
 1. `docs/releases/vX.Y.Z.md` 에 릴리스 글을 쓰고, `Cargo.toml` · `app/tauri.conf.json` 의 버전을 맞춰요
 2. `vX.Y.Z` 태그를 올리거나 Actions › Release 를 태그 이름으로 돌려요 → 서명된 설치 파일 · `latest.json` 이 Release 에 붙어요
-3. 자동 업데이트 서명 키는 저장소 **Settings › Secrets and variables › Actions** 의 `TAURI_SIGNING_PRIVATE_KEY` (비밀번호가 있으면 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). 공개 키는 `app/tauri.conf.json` 에 있어요
+3. 자동 업데이트 서명 키는 저장소 **Settings › Secrets and variables › Actions** 의 `TAURI_SIGNING_PRIVATE_KEY` (비밀번호가 있으면 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). 공개 키는 `app/tauri.conf.json` 에 있어요.
+   키를 아직 넣지 않았으면 설치 파일만 만들어요 (자동 업데이트 파일 없이 — 그 버전은 손으로 깔아요)
 
 > [!WARNING]
 > 서명 키를 잃으면 이미 설치된 MagicKey 는 그 뒤 버전으로 자동 업데이트할 수 없어요. 안전한 곳에 따로 보관해 주세요.

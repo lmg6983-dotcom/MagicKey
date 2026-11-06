@@ -22,21 +22,25 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      # 서명 키가 아직 없으면: 설치 파일만 (자동 업데이트 파일 없이) — 이미 설치된 MagicKey 는 손으로 새 버전을 깔아요
       - name: Check signing key
+        if: env.TAURI_SIGNING_PRIVATE_KEY == ''
         shell: bash
-        run: |
-          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY 가 없어요. 저장소 Settings › Secrets › Actions 에 자동 업데이트 서명 키를 넣어 주세요"
-            exit 1
-          fi
+        run: echo "::warning::TAURI_SIGNING_PRIVATE_KEY 가 없어 자동 업데이트 없이 만들어요. 저장소 Settings › Secrets › Actions 에 넣으면 다음 릴리스부터 자동 업데이트돼요"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p magickey-core
       - name: Build installer (signed for updates)
+        if: env.TAURI_SIGNING_PRIVATE_KEY != ''
         working-directory: app
         run: npx --yes @tauri-apps/cli@2 build
+      - name: Build installer (no update signature)
+        if: env.TAURI_SIGNING_PRIVATE_KEY == ''
+        working-directory: app
+        run: npx --yes @tauri-apps/cli@2 build --config tauri.ci.conf.json
       # 자동 업데이트가 읽는 latest.json: 버전 · 설치 파일 주소 · 서명
       - name: Write latest.json
+        if: env.TAURI_SIGNING_PRIVATE_KEY != ''
         shell: pwsh
         run: |
           $exe = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
@@ -61,6 +65,7 @@ jobs:
           name: MagicKey ${{ env.TAG }}
           body_path: docs/releases/${{ env.TAG }}.md
           make_latest: true
+          fail_on_unmatched_files: false # 서명 키가 없으면 .sig · latest.json 이 없다
           files: |
             target/release/bundle/nsis/*-setup.exe
             target/release/bundle/nsis/*-setup.exe.sig
