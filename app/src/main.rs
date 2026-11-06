@@ -91,7 +91,7 @@ impl Memos {
         let memoking = p.config_dir().ok().map(|d| d.join("MemoKing")).filter(|d| d.is_dir());
         // 메모킹에게 MagicKey 가 여기 있다고 알린다 → 메모킹(0.77~)은 매직키 단축키를 넘긴다 (메모킹이 없으면 폴더를 만들지 않는다)
         if let (Some(dir), Ok(exe)) = (&memoking, std::env::current_exe()) {
-            let note = serde_json::json!({ "exe": exe, "version": env!("CARGO_PKG_VERSION") });
+            let note = serde_json::json!({ "exe": exe, "pid": std::process::id(), "version": env!("CARGO_PKG_VERSION") }); // pid: 켜져 있을 때만 넘기게
             let _ = std::fs::write(dir.join("magickey.json"), note.to_string());
         }
         let file = memoking.map(|d| d.join("settings.json"));
@@ -257,8 +257,8 @@ fn update_text(app: &AppHandle, text: &str) {
     let _ = app.state::<TrayMenu>().update.set_text(text);
 }
 
-/// 새 버전 확인 — 있으면 메뉴에 띄워 둔다
-async fn check_update(app: AppHandle) {
+/// 새 버전 확인 — 있으면 메뉴에 띄워 둔다. 확인하지 못한 것은 손으로 눌렀을 때만 알린다 (조용한 확인은 메뉴를 그대로)
+async fn check_update(app: AppHandle, by_hand: bool) {
     let found = match app.updater() {
         Ok(u) => u.check().await,
         Err(e) => Err(e),
@@ -272,7 +272,8 @@ async fn check_update(app: AppHandle) {
             *app.state::<PendingUpdate>().0.lock().unwrap() = Some(u);
         }
         Ok(None) => update_text(&app, &format!("최신 버전이에요 (v{})", env!("CARGO_PKG_VERSION"))),
-        Err(_) => update_text(&app, "업데이트를 확인하지 못했어요 — 눌러서 다시"),
+        Err(_) if by_hand => update_text(&app, "업데이트를 확인하지 못했어요 — 눌러서 다시"),
+        Err(_) => {}
     }
 }
 
@@ -281,7 +282,7 @@ async fn update_clicked(app: AppHandle) {
     let pending = app.state::<PendingUpdate>().0.lock().unwrap().take();
     let Some(u) = pending else {
         update_text(&app, "업데이트 확인 중…");
-        return check_update(app).await;
+        return check_update(app, true).await;
     };
     update_text(&app, &format!("v{} 받는 중…", u.version));
     if let Err(e) = u.download_and_install(|_, _| {}, || {}).await {
@@ -558,7 +559,7 @@ fn main() {
                 std::thread::sleep(Duration::from_secs(60));
                 loop {
                     if h.state::<PendingUpdate>().0.lock().unwrap().is_none() {
-                        tauri::async_runtime::block_on(check_update(h.clone()));
+                        tauri::async_runtime::block_on(check_update(h.clone(), false));
                     }
                     std::thread::sleep(Duration::from_secs(6 * 3600));
                 }
