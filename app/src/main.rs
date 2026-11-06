@@ -327,11 +327,13 @@ struct UpdState {
     notes: Option<String>,
     percent: u8,
     message: Option<String>,
+    /// 자동 업데이트 정보가 없는 릴리스 — 창이 '릴리스 페이지에서 받기' 를 보인다
+    manual: bool,
 }
 
 impl Default for UpdState {
     fn default() -> Self {
-        UpdState { status: "idle", current: env!("CARGO_PKG_VERSION"), version: None, notes: None, percent: 0, message: None }
+        UpdState { status: "idle", current: env!("CARGO_PKG_VERSION"), version: None, notes: None, percent: 0, message: None, manual: false }
     }
 }
 
@@ -389,8 +391,18 @@ async fn check_update(app: &AppHandle, by_hand: bool) -> UpdState {
             set_update(app, |s| *s = UpdState { status: "latest", ..UpdState::default() })
         }
         Err(_) if !by_hand => set_update(app, |s| *s = before),
+        // 릴리스에 latest.json 이 없다 (서명 키 없이 만든 릴리스) — 인터넷 탓이 아니니 손으로 받는 길을 보인다
+        Err(tauri_plugin_updater::Error::ReleaseNotFound) => set_update(app, |s| {
+            *s = UpdState {
+                status: "error",
+                message: Some("이 버전은 자동 업데이트 정보가 없어요. 릴리스 페이지에서 새 설치 파일을 받아 실행하면 그대로 덮어 설치돼요".into()),
+                manual: true,
+                ..UpdState::default()
+            };
+        }),
         Err(e) => set_update(app, |s| {
             s.status = "error";
+            s.manual = false;
             s.message = Some(format!("업데이트를 확인하지 못했어요. 인터넷 연결을 확인하고 다시 눌러 주세요 ({e})"));
         }),
     }
@@ -457,6 +469,12 @@ async fn update_install(app: AppHandle) -> Result<(), String> {
         return Err(e.to_string());
     }
     Ok(())
+}
+
+/// 릴리스 페이지 (자동 업데이트 정보가 없을 때 손으로 받기)
+#[tauri::command]
+fn update_page(app: AppHandle) -> Result<(), String> {
+    app.opener().open_url("https://github.com/lmg6983-dotcom/MagicKey/releases/latest", None::<&str>).map_err(|e| e.to_string())
 }
 
 /// '나중에' — 이 버전은 조용한 확인에서 다시 묻지 않는다
@@ -813,7 +831,7 @@ fn main() {
                 let _ = w.hide(); // 다른 곳을 누르면 숨는다 (업데이트 창은 그대로)
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }

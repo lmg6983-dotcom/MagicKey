@@ -64,7 +64,7 @@ function render() {
     latest: '최신 버전이에요',
     available: '새 버전이 나왔어요',
     downloading: '새 버전을 받는 중',
-    error: hasUpdate ? '업데이트하지 못했어요' : '확인하지 못했어요',
+    error: st.manual ? '자동 업데이트 정보가 없어요' : hasUpdate ? '업데이트하지 못했어요' : '확인하지 못했어요',
   }[s] ?? 'MagicKey 업데이트';
   versionLine();
   ui.notesBox.hidden = !hasUpdate;
@@ -77,7 +77,7 @@ function render() {
   ui.progressText.textContent = s === 'downloading' ? (st.percent >= 100 ? '설치하고 다시 켜요…' : `${st.percent ?? 0}%`) : '';
   ui.msg.className = `upd-msg${s === 'error' ? ' err' : ''}`;
   ui.msg.textContent = s === 'error' ? st.message ?? '' : s === 'latest' ? '새 버전이 나오면 알림 영역 ✦ 메뉴와 이 창으로 알려 드려요' : s === 'available' ? '받으면 MagicKey 가 잠깐 꺼졌다가 새 버전으로 다시 켜져요' : '';
-  ui.go.textContent = { available: '받아서 설치', downloading: '받는 중', checking: '확인 중' }[s] ?? (hasUpdate ? '다시 받기' : '다시 확인');
+  ui.go.textContent = st.manual ? '릴리스 페이지 열기' : { available: '받아서 설치', downloading: '받는 중', checking: '확인 중' }[s] ?? (hasUpdate ? '다시 받기' : '다시 확인');
   ui.go.disabled = s === 'downloading' || s === 'checking';
   ui.later.textContent = s === 'available' ? '나중에' : s === 'downloading' ? '창 닫기 (계속 받아요)' : '닫기';
 }
@@ -88,6 +88,10 @@ function update(next) {
 }
 
 ui.go.addEventListener('click', async () => {
+  if (st.manual) {
+    invoke('update_page').catch(() => {});
+    return;
+  }
   if (st.version && (st.status === 'available' || st.status === 'error')) {
     await invoke('update_install').catch(() => {}); // 실패하면 update:state 로 error 가 온다
     return;
