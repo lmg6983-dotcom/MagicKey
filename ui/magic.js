@@ -1,13 +1,12 @@
 // 매직키 창 — 치는 대로 계산 · 앱 · 폴더 · 파일 · 웹 검색 · 웹 AI 줄을 보여 주고, 고른 줄을 실행한다.
 //   ↑↓ 고르기 · ← → 할 일 고르기 · Enter 실행 · Ctrl+Shift+C 경로 복사 · Ctrl+Shift+E 폴더 열기 · Esc 지우기 → 닫기
-//   아래 캡슐 = 기능, 누르면 켜고 끈다 (이 PC 에 기억) · 오른쪽 위 키 단추 = 여는 단축키 바꾸기
+//   아래 캡슐 = 기능, 누르면 켜고 끈다 (이 PC 에 기억) · 단축키 · 기능 설정은 알림 영역 ✦ 오른쪽 클릭 메뉴에도
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
 
 const input = document.getElementById('magic-input');
 const clearBtn = document.getElementById('magic-clear');
-const keyBtn = document.getElementById('magic-key');
 const resultsEl = document.getElementById('magic-results');
 const modulesEl = document.getElementById('magic-modules');
 const hintEl = document.getElementById('magic-hint');
@@ -87,15 +86,18 @@ function renderModules() {
     chip.setAttribute('aria-pressed', String(isOn(m.id)));
     chip.append(el('span', 'chip-dot'), m.chip);
     chip.addEventListener('mousedown', (e) => e.preventDefault()); // 입력 칸 포커스 유지
-    chip.addEventListener('click', () => {
-      if (off.has(m.id)) off.delete(m.id);
-      else off.add(m.id);
-      store.set('magic.off', [...off]);
-      renderModules();
-      search();
-    });
+    chip.addEventListener('click', () => setModule(m.id, off.has(m.id)));
     return chip;
   }));
+}
+
+function setModule(id, on) {
+  if (on) off.delete(id);
+  else off.add(id);
+  store.set('magic.off', [...off]);
+  invoke('sync_modules', { off: [...off] }).catch(() => {}); // 알림 영역 메뉴 체크도 같게
+  renderModules();
+  search();
 }
 
 // ---------- 결과 ----------
@@ -206,8 +208,6 @@ function render() {
     nodes.push(li);
   };
   const put = (r) => nodes.push(row(r, rows.push(r) - 1, query));
-  keyBtn.textContent = sites.hotkey;
-  keyBtn.classList.toggle('on', recording);
   if (recording) note(`새 단축키를 누르세요 (Ctrl · Alt · Win 과 함께, 예: Ctrl+Shift+Space). 지금: ${sites.hotkey} · Esc 취소`);
   else if (query && res) {
     if (res.calc) put({ ...res.calc, mod: 'calc', text: query });
@@ -365,8 +365,6 @@ function record(on) {
   render();
   input.focus();
 }
-keyBtn.addEventListener('mousedown', (e) => e.preventDefault());
-keyBtn.addEventListener('click', () => record(!recording));
 
 const MOD_KEYS = /^(Control|Alt|Shift|Meta|OS)(Left|Right)?$/;
 async function takeKey(e) {
@@ -435,6 +433,8 @@ function onShow() {
   sites = await invoke('init').catch(() => sites);
   renderModules();
   render();
+  invoke('sync_modules', { off: [...off] }).catch(() => {});
+  await listen('magic:module', (e) => setModule(...e.payload)); // 알림 영역 메뉴 '설정 › 기능'
   await listen('magic:show', onShow);
   await listen('magic:hotkey', () => record(true)); // 알림 영역 메뉴의 '단축키 바꾸기'
 })();
