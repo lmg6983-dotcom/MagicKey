@@ -12,6 +12,9 @@ on:
 permissions:
   contents: write
 
+env:
+  CARGO_NET_GIT_FETCH_WITH_CLI: true # 토큰을 넣은 git 으로 의존성을 받게
+
 jobs:
   release:
     runs-on: windows-latest
@@ -22,6 +25,14 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      # magicsystem-core 는 비공개 MagicSystem 리포에 있다 — 읽기 토큰으로 받는다 (Settings › Secrets › Actions 의 MAGICSYSTEM_TOKEN)
+      - name: Allow private MagicSystem
+        shell: bash
+        env:
+          MAGICSYSTEM_TOKEN: ${{ secrets.MAGICSYSTEM_TOKEN }}
+        run: |
+          if [ -z "$MAGICSYSTEM_TOKEN" ]; then echo "::error::MAGICSYSTEM_TOKEN 이 없어 magicsystem-core 를 받을 수 없어요. MagicSystem 을 읽을 수 있는 토큰을 저장소 Settings › Secrets › Actions 에 넣어 주세요"; exit 1; fi
+          git config --global url."https://x-access-token:${MAGICSYSTEM_TOKEN}@github.com/lmg6983-dotcom/MagicSystem".insteadOf "https://github.com/lmg6983-dotcom/MagicSystem"
       # 서명 키가 아직 없으면: 설치 파일만 (자동 업데이트 파일 없이) — 이미 설치된 MagicKey 는 손으로 새 버전을 깔아요
       - name: Check signing key
         if: env.TAURI_SIGNING_PRIVATE_KEY == ''

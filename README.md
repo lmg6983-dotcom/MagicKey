@@ -21,7 +21,7 @@
 |---|---|---|
 | ✚ **새 메모** | `내일 3시 회의` | 쓴 글을 [메모킹](https://github.com/lmg6983-dotcom/MemoKing) 새 메모로 저장 (Enter 저장 · `Ctrl+Enter` 저장하고 열기) · ⏰ 글 속 날짜로 알림 맞춰 저장 |
 | 📝 **메모** | `견적서` · `ㅎㅇㄹ` | [메모킹](https://github.com/lmg6983-dotcom/MemoKing) 메모를 제목 · 내용으로 찾아 메모킹으로 열기 ([메모킹이 있을 때만](docs/memoking.md)) |
-| 🏢 **OPMS** | `FPD/2026-0271/E` · `홍길동` · `ㅎㄱㄷ` | [MagicOPMS](https://github.com/lmg6983-dotcom/MagicOPMS)로 사건 찾기. 사건번호를 온전히 쓰거나 한 번 찾아 본 번호와 같은 꼴이면 **고르기 전에 저절로** 정확한 사건부터 보여 줘요 (MagicOPMS 가 있을 때만, **기본값 꺼짐** — 캡슐이나 ✦ 메뉴에서 켜요) |
+| 🏢 **OPMS** | `FPD/2026-0271/E` · `홍길동` · `ㅎㄱㄷ` | [MagicSystem](https://github.com/lmg6983-dotcom/MagicSystem)로 사건 찾기. 사건번호를 온전히 쓰거나 한 번 찾아 본 번호와 같은 꼴이면 **고르기 전에 저절로** 정확한 사건부터 보여 줘요 (MagicSystem 이 있을 때만, **기본값 꺼짐** — 캡슐이나 ✦ 메뉴에서 켜요) |
 | 🚀 **앱** | `카톡` · `chrm` | 시작 메뉴 프로그램 실행 |
 | 📁 **파일** | `견적서` · `ㄱㅈㅅ` · `P20261170` | 파일 · 폴더 이름으로 찾아 열기 (초성, 기호 빼고도) |
 | 🧮 **계산** | `1,200 × 3` · `15% * 80000` · `5 inch to cm` | 결과를 Enter 로 복사 |
@@ -84,6 +84,7 @@
 2. `vX.Y.Z` 태그를 올리거나 Actions › Release 를 태그 이름으로 돌려요 → 서명된 설치 파일 · `latest.json` 이 Release 에 붙어요
 3. 자동 업데이트 서명 키는 저장소 **Settings › Secrets and variables › Actions** 의 `TAURI_SIGNING_PRIVATE_KEY` (비밀번호가 있으면 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). 공개 키는 `app/tauri.conf.json` 에 있어요.
    키를 아직 넣지 않았으면 설치 파일만 만들어요 (자동 업데이트 파일 없이 — 그 버전은 손으로 깔아요)
+4. OPMS 코어(`magicsystem-core`)는 비공개 [MagicSystem](https://github.com/lmg6983-dotcom/MagicSystem) 리포에 있어서, CI · 릴리스는 같은 곳의 `MAGICSYSTEM_TOKEN`(MagicSystem **Contents: Read** 권한의 fine-grained 토큰)으로 받아요
 
 > [!WARNING]
 > 서명 키를 잃으면 이미 설치된 MagicKey 는 그 뒤 버전으로 자동 업데이트할 수 없어요. 안전한 곳에 따로 보관해 주세요.

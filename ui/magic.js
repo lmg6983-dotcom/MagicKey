@@ -14,7 +14,7 @@ const box = document.getElementById('magic');
 
 const MODULES = [
   { id: 'memo', chip: '새 메모', name: '새 메모: 쓴 글을 메모킹 새 메모로 저장 (Enter 저장, Ctrl+Enter 저장하고 열기)', memo: true },
-  { id: 'opms', chip: 'OPMS', name: 'OPMS 검색: 사건번호 · 출원인 · 발명자 · 초성을 쓰면 MagicOPMS 로 찾기 (사내망)', opms: true, defaultOff: true },
+  { id: 'opms', chip: 'OPMS', name: 'OPMS 검색: 사건번호 · 출원인 · 발명자 · 초성을 쓰면 MagicSystem 으로 찾기 (사내망)', opms: true, defaultOff: true },
   { id: 'notes', chip: '메모', name: '메모 검색: 메모킹 메모의 제목 · 내용에서 찾아 메모킹으로 열기 (메모 폴더는 읽기만)', memo: true },
   { id: 'apps', chip: '앱', name: '앱 검색: 시작 메뉴 프로그램을 바로 실행' },
   { id: 'files', chip: '파일', name: '파일 검색: PC 의 파일 · 폴더 이름을 찾아 열기 (내용은 읽지 않음)' },
@@ -31,7 +31,7 @@ let optIn = new Set(store.get('magic.on') ?? []); // 기본값이 꺼짐인 기�
 const DEFAULT_OFF = new Set(MODULES.filter((m) => m.defaultOff).map((m) => m.id));
 const isOn = (id) => (DEFAULT_OFF.has(id) ? optIn.has(id) : !off.has(id));
 const offList = () => MODULES.map((m) => m.id).filter((id) => !isOn(id));
-// 메모킹이 없으면 '메모' 캡슐, MagicOPMS 가 없으면 'OPMS' 캡슐은 없다
+// 메모킹이 없으면 '메모' 캡슐, MagicSystem 이 없으면 'OPMS' 캡슐은 없다
 const shownModules = () => MODULES.filter((m) => (!m.memo || sites.memo) && (!m.opms || sites.opms));
 
 let sites = { web: [], ai: [], notice: null, hotkey: '', memo: false, opms: false }; // notice: 단축키를 못 잡았을 때 안내
@@ -77,8 +77,8 @@ const siteLabel = (s) => (s.paste ? `${s.name} (복사해 열기)` : s.name);
 function actionsFor(r) {
   switch (r.kind) {
     case 'new': case 'remind': return [{ id: 'save', label: '저장', text: true }, { id: 'saveOpen', label: '저장하고 열기', key: 'Ctrl+Enter', text: true }];
-    case 'opms': return [{ id: 'open', label: 'MagicOPMS 에서 찾기' }];
-    case 'case': return [{ id: 'open', label: 'MagicOPMS 에서 열기' }, { id: 'copyRef', label: '관리번호 복사', text: true }];
+    case 'opms': return [{ id: 'open', label: 'MagicSystem 에서 찾기' }];
+    case 'case': return [{ id: 'open', label: 'MagicSystem 에서 열기' }, { id: 'copyRef', label: '관리번호 복사', text: true }];
     case 'memo': return [{ id: 'openMemo', label: '메모킹에서 열기' }];
     case 'app': return [{ id: 'open', label: '실행' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }];
     case 'folder': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '위 폴더에서 보기', key: 'Ctrl+Shift+E' }];
