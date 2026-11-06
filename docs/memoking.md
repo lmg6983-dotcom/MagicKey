@@ -10,6 +10,7 @@
 | 방향 | 무엇 | 어떻게 |
 |---|---|---|
 | MagicKey → 메모킹 설정 | 메모 폴더 위치 | `%APPDATA%\MemoKing\settings.json` 의 `vaultPath`. 비어 있으면 `문서\메모킹` |
+| MagicKey → 메모킹 설정 | 매직키 단축키 · 꺼 둔 기능 | 같은 파일의 `shortcuts.magic` · `magic.modules` · `magic.paused` — MagicKey 에서 아직 바꾸지 않았을 때만 따라요 |
 | MagicKey → 메모 폴더 | 메모 찾기 | `*.md` 를 **읽기만** (맨 위 `_memoking` · `attachments` 폴더, `.` · `~$` 로 시작하는 파일은 뺌) |
 | MagicKey → 메모킹 | 메모 열기 | `%LOCALAPPDATA%\Programs\memoking\MemoKing.exe --open-memo=<id>` (꺼져 있으면 켜면서 연다) |
 | MagicKey → 메모킹 | 새 메모 | `MemoKing.exe --new-memo-file=%TEMP%\magickey-*.txt [--open-new] [--remind]` — 메모킹 **0.77.0~** |
@@ -30,6 +31,9 @@
 
 - [x] **1단계** — MagicKey 에서 메모 찾기 · 메모킹으로 열기 (메모킹은 고칠 것 없음)
 - [x] **2단계** — 새 메모 만들기: 메모킹에 `--new-memo-file=<임시 파일>` 인자를 더하고, MagicKey 의 "새 메모" 줄(맨 위, Enter 저장 · Ctrl+Enter 저장하고 열기)과 "알림 맞춰 저장" 줄이 그걸 불러요
-- [ ] **3단계** — 메모킹 안의 매직키를 걷어내요. 메모킹에서 쓰던 매직키 단축키 · 기능 설정은 MagicKey 가 처음 켜질 때 한 번 옮겨 와요
-  - 🤖 **매직 에이전트**(이 PC 의 카나나2 AI)와 🏢 **OPMS 검색**(사내망)은 MagicKey 로 옮기고, **기본값은 꺼짐**
+- [ ] **3단계** — 메모킹 안의 매직키를 걷어내요
+  - [x] **3-1** 설정 따라가기: MagicKey 에서 단축키 · 캡슐을 아직 바꾸지 않았으면 메모킹 매직키에서 쓰던 그대로 (옮겨 적지 않고 읽기만, 바꾸는 순간 MagicKey 설정으로)
+  - [ ] **3-2** 🏢 **OPMS 검색**(사내망)을 MagicKey 로 옮겨요 — **기본값은 꺼짐**
+  - [ ] **3-4** 메모킹에서 매직키 · OPMS 를 걷어내고, 설정 자리에 MagicKey 안내를 둬요
+  - 🤖 **매직 에이전트**(이 PC 의 카나나2 AI)는 옮기지 않아요 — 메모킹 목록 창 검색창 ✦ 에 그대로 남아요 (두 벌이 되면 서로 다르게 답할 수 있어서)
 - [ ] **4단계** — 이 문서를 메모킹 리포에도 두고, MagicKey 를 먼저 · 메모킹을 그다음에 내요 (매직키가 하나도 없는 때가 없게)

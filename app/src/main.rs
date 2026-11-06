@@ -100,10 +100,15 @@ impl Memos {
         me
     }
 
+    /// 메모킹 설정 글 (없으면 빈 글)
+    fn settings_json(&self) -> String {
+        self.settings.as_ref().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default()
+    }
+
     /// 뒤에서 메모 폴더를 다시 훑는다 (바뀐 파일만 새로 읽음, 그동안은 지난 목록으로 찾는다)
     fn touch(self: &Arc<Self>) {
         let Some(root) = self.root.clone() else { return };
-        let json = self.settings.as_ref().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+        let json = self.settings_json();
         self.can_make.store(self.exe.is_some() && memo::can_make_memo(&json), Ordering::SeqCst);
         if self.busy.swap(true, Ordering::SeqCst) {
             return;
@@ -226,12 +231,15 @@ struct Init {
     hotkey: String,
     /// 메모킹 메모를 찾을 수 있는가 (아니면 '메모' 캡슐을 숨긴다)
     memo: bool,
+    /// 메모킹 매직키에서 꺼 둔 기능 — 창에서 캡슐을 아직 만지지 않았으면 이대로
+    #[serde(rename = "memokingOff")]
+    memoking_off: Option<Vec<String>>,
 }
 
 #[tauri::command]
 fn init(hk: State<Hotkey>, notes: State<Arc<Memos>>) -> Init {
     let hotkey = key_label(&hk.now.lock().unwrap());
-    Init { web: web::WEB_ENGINES, ai: web::AI_SITES, notice: hk.notice.lock().unwrap().clone(), hotkey, memo: notes.root.is_some() }
+    Init { web: web::WEB_ENGINES, ai: web::AI_SITES, notice: hk.notice.lock().unwrap().clone(), hotkey, memo: notes.root.is_some(), memoking_off: memo::magic_off(&notes.settings_json()) }
 }
 
 /// 메모 열기 — 메모킹에게 `--open-memo=<id>` 로 (꺼져 있으면 켜면서 연다). 메모킹 실행 파일을 못 찾으면 .md 파일을 기본 앱으로
@@ -400,10 +408,14 @@ fn main() {
             let notes = Memos::find(app.handle());
             let has_memo = notes.root.is_some();
             app.manage(notes);
+
             let file = dir.join("hotkey.txt");
+            // 내가 바꾼 키 > 메모킹 매직키에서 쓰던 키 > Ctrl+Alt+Space
+            let memoking = app.state::<Arc<Memos>>().settings_json();
             let hotkey = std::fs::read_to_string(&file)
                 .ok()
                 .and_then(|s| s.trim().parse().ok())
+                .or_else(|| memo::magic_key(&memoking)?.parse().ok())
                 .unwrap_or(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space));
             app.manage(Hotkey { now: Mutex::new(hotkey), file, notice: Mutex::default() });
 

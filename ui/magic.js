@@ -25,7 +25,7 @@ const store = {
   get: (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 기억 못 해도 지금은 된다 */ } },
 };
-let off = new Set(store.get('magic.off') ?? []); // 캡슐로 꺼 둔 기능
+let off = new Set(store.get('magic.off') ?? []); // 캡슐로 꺼 둔 기능 (아직 만지지 않았으면 메모킹 매직키 설정을 따른다 — init 뒤)
 const isOn = (id) => !off.has(id);
 const shownModules = () => MODULES.filter((m) => !m.memo || sites.memo); // 메모킹이 없으면 '메모' 캡슐은 없다
 
@@ -471,6 +471,7 @@ function onShow() {
 
 (async () => {
   sites = await invoke('init').catch(() => sites);
+  if (store.get('magic.off') == null && sites.memokingOff) off = new Set(sites.memokingOff); // 저장하지 않는다: 캡슐을 누르기 전까지 메모킹을 따라간다
   renderModules();
   render();
   invoke('sync_modules', { off: [...off] }).catch(() => {});

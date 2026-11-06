@@ -46,6 +46,36 @@ pub fn vault_from_settings(json: &str) -> Option<PathBuf> {
     (!p.is_empty()).then(|| PathBuf::from(p))
 }
 
+/// 메모킹 매직키 단축키(settings.json 의 shortcuts.magic, Electron 표기 "Control+Alt+Space") → MagicKey 표기 ("ctrl+alt+Space")
+///   MagicKey 에서 단축키를 아직 바꾸지 않았으면 이걸 쓴다 (메모킹에서 쓰던 키 그대로)
+pub fn magic_key(json: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let acc = v.get("shortcuts")?.get("magic")?.as_str()?;
+    let parts: Vec<String> = acc
+        .split('+')
+        .map(|t| match t.trim().to_lowercase().as_str() {
+            "control" | "ctrl" | "commandorcontrol" | "cmdorctrl" => "ctrl".into(),
+            "alt" | "option" => "alt".into(),
+            "shift" => "shift".into(),
+            "super" | "meta" | "command" | "cmd" => "super".into(),
+            _ => t.trim().to_string(),
+        })
+        .collect();
+    (parts.len() >= 2 && parts.iter().all(|p| !p.is_empty())).then(|| parts.join("+"))
+}
+
+/// 메모킹 매직키에서 꺼 둔 기능 (설정에서 끈 것 · 창에서 잠깐 끈 것) — MagicKey 에서 캡슐을 아직 만지지 않았으면 이대로
+///   메모킹의 'ai'(매직 에이전트 + 웹 AI 단추)를 끄면 MagicKey 의 웹 AI 도 끈다. 매직키를 통째로 껐으면 따르지 않는다
+pub fn magic_off(json: &str) -> Option<Vec<String>> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    let magic = v.get("magic")?;
+    if magic.get("enabled").and_then(|e| e.as_bool()) == Some(false) {
+        return None;
+    }
+    let off = |key: &str, id: &str, want: bool| magic.get(key).and_then(|m| m.get(id)).and_then(|b| b.as_bool()) == Some(want);
+    Some(["memo", "notes", "apps", "files", "calc", "web", "ai"].iter().filter(|id| off("modules", id, false) || off("paused", id, true)).map(|id| id.to_string()).collect())
+}
+
 /// 메모킹이 `--new-memo-file=` 을 알아듣는 첫 버전
 pub const NEW_MEMO_SINCE: (u32, u32, u32) = (0, 77, 0);
 
@@ -317,6 +347,18 @@ mod tests {
         assert_eq!((hits[1].snippet.as_str(), more), ("견적서 보내기", 1));
         assert_eq!(search(&v, "ㅈㅂㄱ", 5).0[0].id, "old", "제목 초성");
         assert!(search(&v, "견적서 없는말", 5).0.is_empty(), "낱말이 모두 있어야");
+    }
+
+    #[test]
+    fn follow_memoking_magic_settings() {
+        assert_eq!(magic_key(r#"{"shortcuts":{"magic":"Control+Shift+Space"}}"#).as_deref(), Some("ctrl+shift+Space"));
+        assert_eq!(magic_key(r#"{"shortcuts":{"magic":"CommandOrControl+Alt+`"}}"#).as_deref(), Some("ctrl+alt+`"));
+        assert_eq!(magic_key(r#"{"shortcuts":{}}"#), None);
+        assert_eq!(magic_key(r#"{"shortcuts":{"magic":"K"}}"#), None, "조합키 없는 키는 쓰지 않는다");
+        let s = r#"{"magic":{"enabled":true,"modules":{"memo":true,"files":false,"opms":false},"paused":{"web":true,"calc":false}}}"#;
+        assert_eq!(magic_off(s), Some(vec!["files".to_string(), "web".to_string()]), "MagicKey 에 없는 기능(opms)은 빼고");
+        assert_eq!(magic_off(r#"{"magic":{"enabled":false,"modules":{"files":false}}}"#), None, "매직키를 통째로 껐으면 따르지 않는다");
+        assert_eq!(magic_off("{}"), None);
     }
 
     #[test]
