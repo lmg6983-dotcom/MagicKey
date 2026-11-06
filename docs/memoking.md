@@ -33,7 +33,7 @@
 - [x] **2단계** — 새 메모 만들기: 메모킹에 `--new-memo-file=<임시 파일>` 인자를 더하고, MagicKey 의 "새 메모" 줄(맨 위, Enter 저장 · Ctrl+Enter 저장하고 열기)과 "알림 맞춰 저장" 줄이 그걸 불러요
 - [ ] **3단계** — 메모킹 안의 매직키를 걷어내요
   - [x] **3-1** 설정 따라가기: MagicKey 에서 단축키 · 캡슐을 아직 바꾸지 않았으면 메모킹 매직키에서 쓰던 그대로 (옮겨 적지 않고 읽기만, 바꾸는 순간 MagicKey 설정으로)
-  - [x] **3-2** 🏢 **OPMS 검색**(사내망)은 따로 설치하는 [MagicSystem](https://github.com/lmg6983-dotcom/MagicOPMS)(Rust · Tauri 2)로 떼어 내요.
+  - [x] **3-2** 🏢 **OPMS 검색**(사내망)은 따로 설치하는 [MagicSystem](https://github.com/lmg6983-dotcom/MagicSystem)(Rust · Tauri 2)로 떼어 내요.
     MagicKey 는 사건번호 · 이름 · 초성처럼 OPMS 에 물을 글이면 "OPMS 에서 찾기" 줄로 MagicSystem 을 불러요 — **기본값은 꺼짐**
     - 저절로 찾기: 온전한 사건번호 · MagicSystem 이 배운 번호 양식과 같은 꼴이면 고르기 전에 사건 6건 (MagicSystem 과 같은 코어 `magicsystem-core` 를 git 으로 가져다 씀)
   - [x] **3-4a** 메모킹 0.77: MagicKey 가 켜져 있으면(`%APPDATA%\MemoKing\magickey.json` 의 `exe` · `pid`) 매직키 단축키를 넘기고, 끄면 다시 잡아요. 없으면 지금처럼 + MagicKey 안내

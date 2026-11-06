@@ -2276,7 +2276,7 @@ dependencies = [
 [[package]]
 name = "magicsystem-core"
 version = "0.2.0"
-source = "git+https://github.com/lmg6983-dotcom/MagicOPMS?rev=c9b7e79b3c26b292ec7cc58e7738fd402b040653#c9b7e79b3c26b292ec7cc58e7738fd402b040653"
+source = "git+https://github.com/lmg6983-dotcom/MagicSystem?rev=c9b7e79b3c26b292ec7cc58e7738fd402b040653#c9b7e79b3c26b292ec7cc58e7738fd402b040653"
 dependencies = [
  "fancy-regex",
  "indexmap 2.14.2",
