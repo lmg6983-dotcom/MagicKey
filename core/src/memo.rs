@@ -44,6 +44,17 @@ pub fn vault_from_settings(json: &str) -> Option<PathBuf> {
     (!p.is_empty()).then(|| PathBuf::from(p))
 }
 
+/// 메모킹이 `--new-memo-file=` 을 알아듣는 첫 버전
+pub const NEW_MEMO_SINCE: (u32, u32, u32) = (0, 77, 0);
+
+/// 메모킹이 마지막으로 켜진 버전(settings.json 의 seenVersion)이 새 메모 만들기를 아는가
+pub fn can_make_memo(json: &str) -> bool {
+    let v: Option<serde_json::Value> = serde_json::from_str(json).ok();
+    let ver = v.as_ref().and_then(|v| v.get("seenVersion")?.as_str().map(str::to_string)).unwrap_or_default();
+    let mut n = ver.trim_start_matches('v').split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+    (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0)) >= NEW_MEMO_SINCE
+}
+
 static FRONT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\u{FEFF}?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)").unwrap());
 static LOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<!--\s*memoking-lock\s+v\d+\s").unwrap());
 static BLOCK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s{0,3}#{1,6}\s+|^\s*>\s?|^\s*(?:[-*+]|\d+[.)])(?:\s+|$)(?:\\?\[[ xX]\](?:\s+|$))?").unwrap());
@@ -264,6 +275,8 @@ mod tests {
         assert_eq!(vault_from_settings(r#"{"vaultPath":"D:\\메모"}"#), Some(PathBuf::from("D:\\메모")));
         assert_eq!(vault_from_settings(r#"{"vaultPath":""}"#), None);
         assert_eq!(vault_from_settings("깨진 글"), None);
+        assert!(can_make_memo(r#"{"seenVersion":"0.77.0"}"#) && can_make_memo(r#"{"seenVersion":"1.0.0"}"#));
+        assert!(!can_make_memo(r#"{"seenVersion":"0.76.1"}"#) && !can_make_memo("{}"), "옛 메모킹은 인자를 몰라 새 메모 줄을 숨긴다");
 
         let dir = std::env::temp_dir().join(format!("magickey-memo-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("_memoking/trash")).unwrap();

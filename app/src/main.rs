@@ -71,6 +71,9 @@ impl Index {
 /// 메모킹 메모 — 메모킹이 이 PC 에 있을 때만 (메모 폴더는 읽기만, 열기는 메모킹에게)
 struct Memos {
     root: Option<PathBuf>,
+    settings: Option<PathBuf>,
+    /// 메모킹이 새 메모 만들기(`--new-memo-file=`)를 아는가 — 메모킹이 업데이트될 수 있어 열 때마다 다시 본다
+    can_make: AtomicBool,
     /// 메모킹 실행 파일 (없으면 메모 파일을 기본 앱으로 연다)
     exe: Option<PathBuf>,
     shelf: Mutex<Shelf>,
@@ -84,14 +87,15 @@ impl Memos {
     /// 메모킹 설정(%APPDATA%\MemoKing\settings.json)의 메모 폴더, 없으면 메모킹 기본값(문서\메모킹)
     fn find(app: &AppHandle) -> Arc<Self> {
         let p = app.path();
-        let settings = p.config_dir().ok().and_then(|d| std::fs::read_to_string(d.join("MemoKing").join("settings.json")).ok());
+        let file = p.config_dir().ok().map(|d| d.join("MemoKing").join("settings.json"));
+        let settings = file.as_ref().and_then(|f| std::fs::read_to_string(f).ok());
         let root = settings
             .as_deref()
             .and_then(memo::vault_from_settings)
             .or_else(|| p.document_dir().ok().map(|d| d.join("메모킹")))
             .filter(|r| r.is_dir());
         let exe = p.local_data_dir().ok().map(|d| d.join("Programs").join("memoking").join("MemoKing.exe")).filter(|e| e.is_file());
-        let me = Arc::new(Memos { root, exe, shelf: Mutex::default(), list: RwLock::default(), busy: AtomicBool::new(false), shown: Mutex::default() });
+        let me = Arc::new(Memos { root, settings: file, can_make: AtomicBool::new(false), exe, shelf: Mutex::default(), list: RwLock::default(), busy: AtomicBool::new(false), shown: Mutex::default() });
         me.touch();
         me
     }
@@ -99,6 +103,8 @@ impl Memos {
     /// 뒤에서 메모 폴더를 다시 훑는다 (바뀐 파일만 새로 읽음, 그동안은 지난 목록으로 찾는다)
     fn touch(self: &Arc<Self>) {
         let Some(root) = self.root.clone() else { return };
+        let json = self.settings.as_ref().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+        self.can_make.store(self.exe.is_some() && memo::can_make_memo(&json), Ordering::SeqCst);
         if self.busy.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -124,6 +130,9 @@ struct QueryOut {
     site: Option<String>,
     question: bool,
     memos: Vec<MemoHit>,
+    /// '새 메모' 줄을 보여 줄까 (메모킹이 알아듣고, 기능을 켜 둠)
+    #[serde(rename = "newMemo")]
+    new_memo: bool,
     #[serde(rename = "memoMore")]
     memo_more: usize,
     #[serde(flatten)]
@@ -155,6 +164,7 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
         site: on("web").then(|| web::site_url(&text)).flatten(),
         question: web::looks_like_question(&text),
         memos,
+        new_memo: on("memo") && notes.can_make.load(Ordering::SeqCst),
         memo_more,
         found,
         indexed: entries.len(),
@@ -182,7 +192,7 @@ fn key_label(s: &Shortcut) -> String {
 }
 
 /// 창의 기능 캡슐과 같은 것 — 알림 영역 메뉴 '설정' 에서도 켜고 끈다 (id 는 magic.js MODULES 와 같게)
-const MODULES: [(&str, &str); 6] = [("notes", "메모 검색 (메모킹)"), ("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
+const MODULES: [(&str, &str); 7] = [("memo", "새 메모 (메모킹)"), ("notes", "메모 검색 (메모킹)"), ("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
 
 /// 알림 영역 메뉴에서 글자 · 체크를 바꿔야 하는 줄
 struct TrayMenu {
@@ -267,6 +277,31 @@ fn sync_modules(off: Vec<String>, menu: State<TrayMenu>) {
         let id = item.id().as_ref().trim_start_matches("mod:").to_string();
         let _ = item.set_checked(!off.contains(&id));
     }
+}
+
+/// 새 메모 — 글을 임시 폴더의 magickey-*.txt 로 쓰고 메모킹에게 `--new-memo-file=` 로 넘긴다 (메모 파일은 메모킹만 쓴다)
+#[tauri::command]
+fn new_memo(text: String, open: bool, notes: State<Arc<Memos>>) -> Result<String, String> {
+    let (Some(exe), true) = (&notes.exe, notes.can_make.load(Ordering::SeqCst)) else {
+        return Err("메모킹을 업데이트하면 새 메모를 만들 수 있어요".into());
+    };
+    let text = text.trim();
+    if text.is_empty() || text.len() > 1024 * 1024 {
+        return Err("메모로 만들 글이 없어요".into());
+    }
+    let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let file = std::env::temp_dir().join(format!("magickey-{}-{nanos}.txt", std::process::id()));
+    std::fs::write(&file, text).map_err(|e| format!("글을 넘기지 못했어요: {e}"))?;
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg(format!("--new-memo-file={}", file.display()));
+    if open {
+        cmd.arg("--open-new");
+    }
+    cmd.spawn().map_err(|e| {
+        let _ = std::fs::remove_file(&file);
+        format!("메모킹을 열지 못했어요: {e}")
+    })?;
+    Ok(if open { String::new() } else { "메모킹에 새 메모를 만들었어요".into() })
 }
 
 /// 찾은 줄의 할 일: open (열기 · 실행) · reveal (폴더 열기) · copyPath (경로 복사)
@@ -367,7 +402,7 @@ fn main() {
             let hotkey_item = MenuItem::with_id(app, "hotkey", "단축키 바꾸기…", true, None::<&str>)?;
             let mods = MODULES
                 .iter()
-                .filter(|(id, _)| has_memo || *id != "notes") // 메모킹이 없으면 메모 검색 줄도 없다
+                .filter(|(id, _)| has_memo || !matches!(*id, "memo" | "notes")) // 메모킹이 없으면 메모 줄도 없다
                 .map(|(id, name)| CheckMenuItem::with_id(app, format!("mod:{id}"), name, true, true, None::<&str>))
                 .collect::<tauri::Result<Vec<_>>>()?;
             let autostart = CheckMenuItem::with_id(app, "autostart", "Windows 시작할 때 켜기", true, app.autolaunch().is_enabled().unwrap_or(false), None::<&str>)?;
@@ -433,7 +468,7 @@ fn main() {
                 let _ = w.hide(); // 다른 곳을 누르면 숨는다
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, act, copy, open_web, hide])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, act, copy, open_web, hide])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }

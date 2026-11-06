@@ -1,5 +1,5 @@
 // 매직키 창 — 치는 대로 계산 · 메모킹 메모 · 앱 · 폴더 · 파일 · 웹 검색 · 웹 AI 줄을 보여 주고, 고른 줄을 실행한다.
-//   ↑↓ 고르기 · ← → 할 일 고르기 · Enter 실행 · Ctrl+Shift+C 경로 복사 · Ctrl+Shift+E 폴더 열기 · Esc 지우기 → 닫기
+//   ↑↓ 고르기 · ← → 할 일 고르기 · Enter 실행 · Ctrl+Enter 다른 실행(새 메모: 저장하고 열기) · Ctrl+Shift+C 경로 복사 · Ctrl+Shift+E 폴더 열기 · Esc 지우기 → 닫기
 //   아래 캡슐 = 기능, 누르면 켜고 끈다 (이 PC 에 기억) · 단축키 · 기능 설정은 알림 영역 ✦ 오른쪽 클릭 메뉴에도
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -13,6 +13,7 @@ const hintEl = document.getElementById('magic-hint');
 const box = document.getElementById('magic');
 
 const MODULES = [
+  { id: 'memo', chip: '새 메모', name: '새 메모: 쓴 글을 메모킹 새 메모로 저장 (Enter 저장, Ctrl+Enter 저장하고 열기)', memo: true },
   { id: 'notes', chip: '메모', name: '메모 검색: 메모킹 메모의 제목 · 내용에서 찾아 메모킹으로 열기 (메모 폴더는 읽기만)', memo: true },
   { id: 'apps', chip: '앱', name: '앱 검색: 시작 메뉴 프로그램을 바로 실행' },
   { id: 'files', chip: '파일', name: '파일 검색: PC 의 파일 · 폴더 이름을 찾아 열기 (내용은 읽지 않음)' },
@@ -67,6 +68,7 @@ const siteLabel = (s) => (s.paste ? `${s.name} (복사해 열기)` : s.name);
 /** 이 줄에서 할 수 있는 일 (첫 번째가 Enter) */
 function actionsFor(r) {
   switch (r.kind) {
+    case 'new': return [{ id: 'save', label: '저장', text: true }, { id: 'saveOpen', label: '저장하고 열기', key: 'Ctrl+Enter', text: true }];
     case 'memo': return [{ id: 'openMemo', label: '메모킹에서 열기' }];
     case 'app': return [{ id: 'open', label: '실행' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }];
     case 'folder': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '위 폴더에서 보기', key: 'Ctrl+Shift+E' }];
@@ -148,6 +150,10 @@ function row(r, index, query) {
     t.textContent = r.value;
     s.textContent = r.detail;
     s.title = r.detail;
+  } else if (r.kind === 'new') {
+    ico.textContent = '✚';
+    t.textContent = '새 메모로 저장';
+    s.textContent = query;
   } else if (r.kind === 'memo') {
     ico.textContent = r.locked ? '🔒' : '📝';
     t.append(highlighted(r.title, query));
@@ -218,6 +224,7 @@ function render() {
   const put = (r) => nodes.push(row(r, rows.push(r) - 1, query));
   if (recording) note(`새 단축키를 누르세요 (Ctrl · Alt · Win 과 함께, 예: Ctrl+Shift+Space). 지금: ${sites.hotkey} · Esc 취소`);
   else if (query && res) {
+    if (res.newMemo) put({ kind: 'new', mod: 'memo' }); // 메모킹 매직키처럼 맨 위 (Enter 로 바로 저장)
     if (res.calc) put({ ...res.calc, mod: 'calc', text: query });
     if (res.site) put({ kind: 'site', mod: 'site', url: res.site });
     const ask = () => isOn('ai') && put({ kind: 'ai', mod: 'ai', sites: sites.ai });
@@ -337,7 +344,10 @@ async function run(i, act = 0) {
       return;
     }
     let msg;
-    if (r.kind === 'memo') msg = await invoke('open_memo', { id: r.id });
+    if (r.kind === 'new') {
+      msg = await invoke('new_memo', { text: input.value, open: a.id === 'saveOpen' });
+      input.value = ''; // 저장한 글은 다음에 열 때 남기지 않는다
+    } else if (r.kind === 'memo') msg = await invoke('open_memo', { id: r.id });
     else if (r.kind === 'site') msg = await invoke('open_web', { kind: 'site', site: '', text: r.url });
     else if (r.kind === 'web' || r.kind === 'ai') msg = await invoke('open_web', { kind: r.kind, site: a.id, text: input.value });
     else msg = await invoke('act', { action: a.id, path: r.path });
@@ -428,7 +438,8 @@ input.addEventListener('keydown', (e) => {
     updateHint();
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    (pending ? search() : Promise.resolve()).then(() => rows.length && run(selected, activeAct));
+    const act = e.ctrlKey ? 1 : activeAct; // Ctrl+Enter: 두 번째 할 일
+    (pending ? search() : Promise.resolve()).then(() => rows.length && run(selected, act));
   }
 });
 
