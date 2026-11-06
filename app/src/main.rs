@@ -87,7 +87,13 @@ impl Memos {
     /// 메모킹 설정(%APPDATA%\MemoKing\settings.json)의 메모 폴더, 없으면 메모킹 기본값(문서\메모킹)
     fn find(app: &AppHandle) -> Arc<Self> {
         let p = app.path();
-        let file = p.config_dir().ok().map(|d| d.join("MemoKing").join("settings.json"));
+        let memoking = p.config_dir().ok().map(|d| d.join("MemoKing")).filter(|d| d.is_dir());
+        // 메모킹에게 MagicKey 가 여기 있다고 알린다 → 메모킹(0.77~)은 매직키 단축키를 넘긴다 (메모킹이 없으면 폴더를 만들지 않는다)
+        if let (Some(dir), Ok(exe)) = (&memoking, std::env::current_exe()) {
+            let note = serde_json::json!({ "exe": exe, "version": env!("CARGO_PKG_VERSION") });
+            let _ = std::fs::write(dir.join("magickey.json"), note.to_string());
+        }
+        let file = memoking.map(|d| d.join("settings.json"));
         let settings = file.as_ref().and_then(|f| std::fs::read_to_string(f).ok());
         let root = settings
             .as_deref()
@@ -109,7 +115,7 @@ impl Memos {
     fn touch(self: &Arc<Self>) {
         let Some(root) = self.root.clone() else { return };
         let json = self.settings_json();
-        self.can_make.store(self.exe.is_some() && memo::can_make_memo(&json), Ordering::SeqCst);
+        self.can_make.store(self.exe.is_some() && memo::knows_magickey(&json), Ordering::SeqCst);
         if self.busy.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -221,6 +227,33 @@ fn show_key(app: &AppHandle, s: &Shortcut, ok: bool) {
         let tip = if ok { format!("MagicKey — {label}") } else { "MagicKey — 단축키를 못 잡았어요. 여기를 눌러 열기".into() };
         let _ = tray.set_tooltip(Some(tip));
     }
+}
+
+/// 메모킹(0.77~)은 magickey.json 을 보고 1분 안에 매직키 단축키를 놓는다 — 그동안 조용히 다시 잡아 보고, 2분이 지나도 못 잡으면 창을 띄워 알린다
+fn retry_hotkey(app: AppHandle) {
+    std::thread::spawn(move || {
+        for _ in 0..12 {
+            std::thread::sleep(Duration::from_secs(10));
+            let (tx, rx) = std::sync::mpsc::channel();
+            let a = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let hk = a.state::<Hotkey>();
+                let key = *hk.now.lock().unwrap(); // 그사이 단축키를 바꿨으면 그 키
+                let gs = a.global_shortcut();
+                let ok = gs.is_registered(key) || gs.register(key).is_ok();
+                if ok {
+                    *hk.notice.lock().unwrap() = None;
+                    show_key(&a, &key, true);
+                }
+                let _ = tx.send(ok);
+            });
+            if rx.recv().unwrap_or(false) {
+                return;
+            }
+        }
+        let a = app.clone();
+        let _ = app.run_on_main_thread(move || toggle(&a));
+    });
 }
 
 #[derive(Serialize)]
@@ -481,7 +514,11 @@ fn main() {
                     key_label(&hotkey)
                 );
                 *app.state::<Hotkey>().notice.lock().unwrap() = Some(msg);
-                toggle(app.handle());
+                if memo::knows_magickey(&memoking) {
+                    retry_hotkey(app.handle().clone()); // 메모킹이 곧 키를 넘긴다 — 창을 띄우지 않고 기다린다
+                } else {
+                    toggle(app.handle());
+                }
             }
             Ok(())
         })

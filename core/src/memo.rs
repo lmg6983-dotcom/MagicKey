@@ -47,8 +47,12 @@ pub fn vault_from_settings(json: &str) -> Option<PathBuf> {
 }
 
 /// 메모킹 매직키 단축키(settings.json 의 shortcuts.magic, Electron 표기 "Control+Alt+Space") → MagicKey 표기 ("ctrl+alt+Space")
-///   MagicKey 에서 단축키를 아직 바꾸지 않았으면 이걸 쓴다 (메모킹에서 쓰던 키 그대로)
+///   MagicKey 에서 단축키를 아직 바꾸지 않았으면 이걸 쓴다 (메모킹에서 쓰던 키 그대로).
+///   메모킹이 MagicKey 에게 키를 넘기는 버전일 때만 — 옛 메모킹은 그 키를 계속 잡고 있어 MagicKey 가 못 잡는다
 pub fn magic_key(json: &str) -> Option<String> {
+    if !knows_magickey(json) {
+        return None;
+    }
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let acc = v.get("shortcuts")?.get("magic")?.as_str()?;
     let parts: Vec<String> = acc
@@ -67,6 +71,9 @@ pub fn magic_key(json: &str) -> Option<String> {
 /// 메모킹 매직키에서 꺼 둔 기능 (설정에서 끈 것 · 창에서 잠깐 끈 것) — MagicKey 에서 캡슐을 아직 만지지 않았으면 이대로
 ///   메모킹의 'ai'(매직 에이전트 + 웹 AI 단추)를 끄면 MagicKey 의 웹 AI 도 끈다. 매직키를 통째로 껐으면 따르지 않는다
 pub fn magic_off(json: &str) -> Option<Vec<String>> {
+    if !knows_magickey(json) {
+        return None;
+    }
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let magic = v.get("magic")?;
     if magic.get("enabled").and_then(|e| e.as_bool()) == Some(false) {
@@ -76,15 +83,15 @@ pub fn magic_off(json: &str) -> Option<Vec<String>> {
     Some(["memo", "notes", "apps", "files", "calc", "web", "ai"].iter().filter(|id| off("modules", id, false) || off("paused", id, true)).map(|id| id.to_string()).collect())
 }
 
-/// 메모킹이 `--new-memo-file=` 을 알아듣는 첫 버전
-pub const NEW_MEMO_SINCE: (u32, u32, u32) = (0, 77, 0);
+/// 메모킹이 MagicKey 와 함께 쓰기를 아는 첫 버전 — `--new-memo-file=` · `--remind` 를 알아듣고, MagicKey 가 있으면 매직키 단축키를 넘긴다
+pub const MAGICKEY_SINCE: (u32, u32, u32) = (0, 77, 0);
 
-/// 메모킹이 마지막으로 켜진 버전(settings.json 의 seenVersion)이 새 메모 만들기를 아는가
-pub fn can_make_memo(json: &str) -> bool {
+/// 메모킹이 마지막으로 켜진 버전(settings.json 의 seenVersion)이 MagicKey 와 함께 쓰기를 아는가
+pub fn knows_magickey(json: &str) -> bool {
     let v: Option<serde_json::Value> = serde_json::from_str(json).ok();
     let ver = v.as_ref().and_then(|v| v.get("seenVersion")?.as_str().map(str::to_string)).unwrap_or_default();
     let mut n = ver.trim_start_matches('v').split('.').map(|p| p.parse::<u32>().unwrap_or(0));
-    (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0)) >= NEW_MEMO_SINCE
+    (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0)) >= MAGICKEY_SINCE
 }
 
 static FRONT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\u{FEFF}?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)").unwrap());
@@ -351,13 +358,15 @@ mod tests {
 
     #[test]
     fn follow_memoking_magic_settings() {
-        assert_eq!(magic_key(r#"{"shortcuts":{"magic":"Control+Shift+Space"}}"#).as_deref(), Some("ctrl+shift+Space"));
-        assert_eq!(magic_key(r#"{"shortcuts":{"magic":"CommandOrControl+Alt+`"}}"#).as_deref(), Some("ctrl+alt+`"));
-        assert_eq!(magic_key(r#"{"shortcuts":{}}"#), None);
-        assert_eq!(magic_key(r#"{"shortcuts":{"magic":"K"}}"#), None, "조합키 없는 키는 쓰지 않는다");
-        let s = r#"{"magic":{"enabled":true,"modules":{"memo":true,"files":false,"opms":false},"paused":{"web":true,"calc":false}}}"#;
-        assert_eq!(magic_off(s), Some(vec!["files".to_string(), "web".to_string()]), "MagicKey 에 없는 기능(opms)은 빼고");
-        assert_eq!(magic_off(r#"{"magic":{"enabled":false,"modules":{"files":false}}}"#), None, "매직키를 통째로 껐으면 따르지 않는다");
+        let v = r#""seenVersion":"0.77.0""#;
+        assert_eq!(magic_key(&format!(r#"{{{v},"shortcuts":{{"magic":"Control+Shift+Space"}}}}"#)).as_deref(), Some("ctrl+shift+Space"));
+        assert_eq!(magic_key(&format!(r#"{{{v},"shortcuts":{{"magic":"CommandOrControl+Alt+`"}}}}"#)).as_deref(), Some("ctrl+alt+`"));
+        assert_eq!(magic_key(&format!(r#"{{{v},"shortcuts":{{}}}}"#)), None);
+        assert_eq!(magic_key(&format!(r#"{{{v},"shortcuts":{{"magic":"K"}}}}"#)), None, "조합키 없는 키는 쓰지 않는다");
+        assert_eq!(magic_key(r#"{"seenVersion":"0.76.1","shortcuts":{"magic":"Control+Shift+Space"}}"#), None, "옛 메모킹은 그 키를 계속 잡고 있다");
+        let s = format!(r#"{{{v},"magic":{{"enabled":true,"modules":{{"memo":true,"files":false,"opms":false}},"paused":{{"web":true,"calc":false}}}}}}"#);
+        assert_eq!(magic_off(&s), Some(vec!["files".to_string(), "web".to_string()]), "MagicKey 에 없는 기능(opms)은 빼고");
+        assert_eq!(magic_off(&format!(r#"{{{v},"magic":{{"enabled":false,"modules":{{"files":false}}}}}}"#)), None, "매직키를 통째로 껐으면 따르지 않는다");
         assert_eq!(magic_off("{}"), None);
     }
 
@@ -376,8 +385,8 @@ mod tests {
         assert_eq!(vault_from_settings(r#"{"vaultPath":"D:\\메모"}"#), Some(PathBuf::from("D:\\메모")));
         assert_eq!(vault_from_settings(r#"{"vaultPath":""}"#), None);
         assert_eq!(vault_from_settings("깨진 글"), None);
-        assert!(can_make_memo(r#"{"seenVersion":"0.77.0"}"#) && can_make_memo(r#"{"seenVersion":"1.0.0"}"#));
-        assert!(!can_make_memo(r#"{"seenVersion":"0.76.1"}"#) && !can_make_memo("{}"), "옛 메모킹은 인자를 몰라 새 메모 줄을 숨긴다");
+        assert!(knows_magickey(r#"{"seenVersion":"0.77.0"}"#) && knows_magickey(r#"{"seenVersion":"1.0.0"}"#));
+        assert!(!knows_magickey(r#"{"seenVersion":"0.76.1"}"#) && !knows_magickey("{}"), "옛 메모킹은 인자를 몰라 새 메모 줄을 숨긴다");
 
         let dir = std::env::temp_dir().join(format!("magickey-memo-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("_memoking/trash")).unwrap();
