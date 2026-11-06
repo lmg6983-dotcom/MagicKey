@@ -86,12 +86,16 @@ pub fn magic_off(json: &str) -> Option<Vec<String>> {
 /// 메모킹이 MagicKey 와 함께 쓰기를 아는 첫 버전 — `--new-memo-file=` · `--remind` 를 알아듣고, MagicKey 가 있으면 매직키 단축키를 넘긴다
 pub const MAGICKEY_SINCE: (u32, u32, u32) = (0, 77, 0);
 
-/// 메모킹이 마지막으로 켜진 버전(settings.json 의 seenVersion)이 MagicKey 와 함께 쓰기를 아는가
+/// 메모킹 버전이 MagicKey 와 함께 쓰기를 아는가 — appVersion(0.77.1~, 켤 때마다 적음)과 seenVersion(목록 창을 열 때) 중 큰 것
+///   (seenVersion 만 보면 알림 영역에서 조용히 켜진 메모킹을 옛 버전으로 잘못 본다)
 pub fn knows_magickey(json: &str) -> bool {
-    let v: Option<serde_json::Value> = serde_json::from_str(json).ok();
-    let ver = v.as_ref().and_then(|v| v.get("seenVersion")?.as_str().map(str::to_string)).unwrap_or_default();
-    let mut n = ver.trim_start_matches('v').split('.').map(|p| p.parse::<u32>().unwrap_or(0));
-    (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0)) >= MAGICKEY_SINCE
+    let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
+    let ver = |key: &str| {
+        let s = v.get(key).and_then(|x| x.as_str()).unwrap_or("");
+        let mut n = s.trim_start_matches('v').split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+        (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0))
+    };
+    ver("appVersion").max(ver("seenVersion")) >= MAGICKEY_SINCE
 }
 
 static FRONT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\u{FEFF}?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)").unwrap());
@@ -387,6 +391,7 @@ mod tests {
         assert_eq!(vault_from_settings("깨진 글"), None);
         assert!(knows_magickey(r#"{"seenVersion":"0.77.0"}"#) && knows_magickey(r#"{"seenVersion":"1.0.0"}"#));
         assert!(!knows_magickey(r#"{"seenVersion":"0.76.1"}"#) && !knows_magickey("{}"), "옛 메모킹은 인자를 몰라 새 메모 줄을 숨긴다");
+        assert!(knows_magickey(r#"{"seenVersion":"0.76.1","appVersion":"0.77.1"}"#), "목록 창을 열지 않아 seenVersion 이 옛것이어도");
 
         let dir = std::env::temp_dir().join(format!("magickey-memo-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("_memoking/trash")).unwrap();

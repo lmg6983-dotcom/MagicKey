@@ -513,6 +513,13 @@ input.addEventListener('keydown', (e) => {
 
 // 창이 떠오를 때마다: 지난 글은 남겨 두고 통째로 골라 둔다 (이어서 찾으려면 그대로, 새로 찾으려면 바로 치면 바뀐다)
 function onShow() {
+  // 켤 때 키를 못 잡았다는 안내는, 그 뒤 메모킹이 키를 넘겨줬으면 지워졌다 — 열 때마다 다시 받는다
+  invoke('init').then((s) => {
+    if (s.notice !== sites.notice || s.hotkey !== sites.hotkey) {
+      Object.assign(sites, { notice: s.notice, hotkey: s.hotkey });
+      render();
+    }
+  }).catch(() => {});
   recording = false;
   grow();
   flashUntil = 0;
