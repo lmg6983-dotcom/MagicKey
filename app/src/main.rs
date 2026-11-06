@@ -1,4 +1,4 @@
-// MagicKey — Ctrl+Alt+Space 로 어디서든 여는 만능 입력창 (앱 · 파일 · 폴더 찾기, 계산 · 날짜 계산, 웹 검색, 웹 AI)
+// MagicKey — Ctrl+Alt+Space (바꿀 수 있음) 로 어디서든 여는 만능 입력창 (앱 · 파일 · 폴더 찾기, 계산 · 날짜 계산, 웹 검색, 웹 AI)
 //   창은 늘 떠 있다가 보였다 숨었다 한다 (다른 곳을 누르면 숨음). 끝내기는 알림 영역 아이콘에서.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -10,7 +10,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, SystemTime};
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::Wry;
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -109,20 +111,93 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>) -> R
     })
 }
 
-/// 단축키를 못 잡았을 때 창에 띄울 안내
-#[derive(Default)]
-struct Notice(Mutex<Option<String>>);
+/// 여는 단축키 — 지금 키, 기억할 파일, 못 잡았을 때 창에 띄울 안내
+struct Hotkey {
+    now: Mutex<Shortcut>,
+    file: PathBuf,
+    notice: Mutex<Option<String>>,
+}
+
+/// 사람이 읽는 이름: Ctrl+Alt+Space, Ctrl+Shift+K, Alt+1
+fn key_label(s: &Shortcut) -> String {
+    let mut out = String::new();
+    for (m, name) in [(Modifiers::CONTROL, "Ctrl+"), (Modifiers::ALT, "Alt+"), (Modifiers::SHIFT, "Shift+"), (Modifiers::SUPER, "Win+")] {
+        if s.mods.contains(m) {
+            out.push_str(name);
+        }
+    }
+    let key = s.key.to_string();
+    out + key.strip_prefix("Key").or_else(|| key.strip_prefix("Digit")).unwrap_or(&key)
+}
+
+/// 창의 기능 캡슐과 같은 것 — 알림 영역 메뉴 '설정' 에서도 켜고 끈다 (id 는 magic.js MODULES 와 같게)
+const MODULES: [(&str, &str); 5] = [("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
+
+/// 알림 영역 메뉴에서 글자 · 체크를 바꿔야 하는 줄
+struct TrayMenu {
+    open: MenuItem<Wry>,
+    hotkey: MenuItem<Wry>,
+    mods: Vec<CheckMenuItem<Wry>>,
+}
+
+/// 알림 영역 아이콘 · 메뉴에 지금 단축키를 쓴다 (못 잡았으면 그렇다고)
+fn show_key(app: &AppHandle, s: &Shortcut, ok: bool) {
+    let label = key_label(s);
+    let menu = app.state::<TrayMenu>();
+    let _ = menu.open.set_text(format!("열기\t{label}"));
+    let _ = menu.hotkey.set_text(if ok { format!("단축키 바꾸기…\t{label}") } else { format!("단축키 바꾸기…\t{label} (못 잡음)") });
+    if let Some(tray) = app.tray_by_id("main") {
+        let tip = if ok { format!("MagicKey — {label}") } else { "MagicKey — 단축키를 못 잡았어요. 여기를 눌러 열기".into() };
+        let _ = tray.set_tooltip(Some(tip));
+    }
+}
 
 #[derive(Serialize)]
 struct Init {
     web: &'static [web::Site],
     ai: &'static [web::Site],
     notice: Option<String>,
+    hotkey: String,
 }
 
 #[tauri::command]
-fn init(notice: State<Notice>) -> Init {
-    Init { web: web::WEB_ENGINES, ai: web::AI_SITES, notice: notice.0.lock().unwrap().clone() }
+fn init(hk: State<Hotkey>) -> Init {
+    let hotkey = key_label(&hk.now.lock().unwrap());
+    Init { web: web::WEB_ENGINES, ai: web::AI_SITES, notice: hk.notice.lock().unwrap().clone(), hotkey }
+}
+
+/// 단축키 바꾸기 (key = "ctrl+shift+KeyK" 꼴) — 새 키를 잡은 뒤에야 옛 키를 놓는다 (못 잡으면 그대로)
+#[tauri::command]
+fn set_hotkey(app: AppHandle, key: String, hk: State<Hotkey>) -> Result<String, String> {
+    let new: Shortcut = key.parse().map_err(|_| "이 키는 단축키로 쓸 수 없어요".to_string())?;
+    if !new.mods.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER) {
+        return Err("Ctrl · Alt · Win 중 하나와 함께 눌러 주세요".into());
+    }
+    let label = key_label(&new);
+    let mut now = hk.now.lock().unwrap();
+    let gs = app.global_shortcut();
+    if new.id() != now.id() || !gs.is_registered(*now) {
+        gs.register(new).map_err(|_| format!("{label} 도 다른 프로그램이 쓰고 있어요. 다른 조합을 눌러 보세요"))?;
+        if new.id() != now.id() {
+            let _ = gs.unregister(*now); // 못 잡고 있던 키면 놓을 것도 없다
+        }
+    }
+    *now = new;
+    *hk.notice.lock().unwrap() = None;
+    if let Some(dir) = hk.file.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(&hk.file, new.to_string()); // 기억 못 해도 지금은 된다
+    show_key(&app, &new, true);
+    Ok(label)
+}
+
+/// 창에서 캡슐을 눌렀을 때 — 알림 영역 메뉴의 체크도 맞춘다
+#[tauri::command]
+fn sync_modules(off: Vec<String>, menu: State<TrayMenu>) {
+    for (item, (id, _)) in menu.mods.iter().zip(MODULES) {
+        let _ = item.set_checked(!off.iter().any(|o| o == id));
+    }
 }
 
 /// 찾은 줄의 할 일: open (열기 · 실행) · reveal (폴더 열기) · copyPath (경로 복사)
@@ -188,11 +263,11 @@ fn toggle(app: &AppHandle) {
 }
 
 fn main() {
-    let hotkey = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space);
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| toggle(app))) // 두 번 켜면 이미 켜진 창을 띄운다
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _, e| {
@@ -202,22 +277,60 @@ fn main() {
                 })
                 .build(),
         )
-        .setup(move |app| {
-            let cache = app.path().app_local_data_dir()?.join("index.tsv");
-            app.manage(Index::new(cache));
-            app.manage(Notice::default());
+        .setup(|app| {
+            let dir = app.path().app_local_data_dir()?;
+            app.manage(Index::new(dir.join("index.tsv")));
+            let file = dir.join("hotkey.txt");
+            let hotkey = std::fs::read_to_string(&file)
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space));
+            app.manage(Hotkey { now: Mutex::new(hotkey), file, notice: Mutex::default() });
 
-            let open = MenuItem::with_id(app, "open", "열기 (Ctrl+Alt+Space)", true, None::<&str>)?;
+            // 알림 영역 ✦ — 왼쪽 클릭: 열기 · 오른쪽 클릭: 메뉴 (설정은 여기에만, 창은 깔끔하게)
+            let open = MenuItem::with_id(app, "open", "열기", true, None::<&str>)?;
+            let hotkey_item = MenuItem::with_id(app, "hotkey", "단축키 바꾸기…", true, None::<&str>)?;
+            let mods = MODULES
+                .iter()
+                .map(|(id, name)| CheckMenuItem::with_id(app, format!("mod:{id}"), name, true, true, None::<&str>))
+                .collect::<tauri::Result<Vec<_>>>()?;
+            let autostart = CheckMenuItem::with_id(app, "autostart", "Windows 시작할 때 켜기", true, app.autolaunch().is_enabled().unwrap_or(false), None::<&str>)?;
+            let reindex = MenuItem::with_id(app, "reindex", "파일 목록 새로 만들기", true, None::<&str>)?;
+            let sep = || PredefinedMenuItem::separator(app);
+            let feats = Submenu::with_items(app, "기능", true, &mods.iter().map(|m| m as &dyn tauri::menu::IsMenuItem<Wry>).collect::<Vec<_>>())?;
+            let settings = Submenu::with_items(app, "설정", true, &[&hotkey_item, &feats, &sep()?, &autostart, &reindex])?;
             let quit = MenuItem::with_id(app, "quit", "끝내기", true, None::<&str>)?;
-            let tray = TrayIconBuilder::new()
+            let menu = Menu::with_items(app, &[&open, &sep()?, &settings, &sep()?, &quit])?;
+            app.manage(TrayMenu { open, hotkey: hotkey_item, mods });
+            TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().cloned().ok_or("아이콘이 없어요")?)
-                .tooltip("MagicKey — Ctrl+Alt+Space")
-                .menu(&Menu::with_items(app, &[&open, &quit])?)
+                .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, e| match e.id.as_ref() {
+                .on_menu_event(move |app, e| match e.id.as_ref() {
                     "open" => toggle(app),
+                    "hotkey" => {
+                        toggle(app);
+                        let _ = app.emit("magic:hotkey", ());
+                    }
+                    "autostart" => {
+                        let al = app.autolaunch();
+                        let on = autostart.is_checked().unwrap_or(false); // 누르면 체크가 먼저 바뀌어 온다
+                        if (if on { al.enable() } else { al.disable() }).is_err() {
+                            let _ = autostart.set_checked(al.is_enabled().unwrap_or(false));
+                        }
+                    }
+                    "reindex" => {
+                        let idx = app.state::<Arc<Index>>();
+                        *idx.built.lock().unwrap() = None;
+                        idx.touch();
+                    }
                     "quit" => app.exit(0),
-                    _ => {}
+                    id => {
+                        if let Some(m) = id.strip_prefix("mod:") {
+                            let on = app.state::<TrayMenu>().mods.iter().find(|i| i.id().as_ref() == id).and_then(|i| i.is_checked().ok());
+                            let _ = app.emit("magic:module", (m, on.unwrap_or(true)));
+                        }
+                    }
                 })
                 .on_tray_icon_event(|tray, e| {
                     if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = e {
@@ -226,11 +339,15 @@ fn main() {
                 })
                 .build(app)?;
 
-            // 메모킹 매직키처럼 다른 프로그램이 이미 쓰고 있으면: 창을 한 번 띄워 알리고, 알림 영역 아이콘으로 연다
-            if app.global_shortcut().register(hotkey).is_err() {
-                let msg = "Ctrl+Alt+Space 를 다른 프로그램(메모킹 등)이 쓰고 있어요. 그 프로그램의 단축키를 끄고 MagicKey 를 다시 켜거나, 알림 영역의 ✦ 를 눌러 여세요";
-                *app.state::<Notice>().0.lock().unwrap() = Some(msg.into());
-                let _ = tray.set_tooltip(Some("MagicKey — 단축키를 못 잡았어요. 여기를 눌러 열기"));
+            // 메모킹 매직키처럼 다른 프로그램이 이미 쓰고 있으면: 창을 한 번 띄워 알리고, 거기서 바로 다른 키로 바꾸게 한다
+            let ok = app.global_shortcut().register(hotkey).is_ok();
+            show_key(app.handle(), &hotkey, ok);
+            if !ok {
+                let msg = format!(
+                    "{} 를 다른 프로그램이 쓰고 있어요 (메모킹은 창을 닫아도 알림 영역에 남아 이 키를 잡고 있어요). 여기를 눌러 다른 키로 바꾸세요",
+                    key_label(&hotkey)
+                );
+                *app.state::<Hotkey>().notice.lock().unwrap() = Some(msg);
                 toggle(app.handle());
             }
             Ok(())
@@ -240,7 +357,7 @@ fn main() {
                 let _ = w.hide(); // 다른 곳을 누르면 숨는다
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, act, copy, open_web, hide])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, act, copy, open_web, hide])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }

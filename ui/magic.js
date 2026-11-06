@@ -1,6 +1,6 @@
 // 매직키 창 — 치는 대로 계산 · 앱 · 폴더 · 파일 · 웹 검색 · 웹 AI 줄을 보여 주고, 고른 줄을 실행한다.
 //   ↑↓ 고르기 · ← → 할 일 고르기 · Enter 실행 · Ctrl+Shift+C 경로 복사 · Ctrl+Shift+E 폴더 열기 · Esc 지우기 → 닫기
-//   아래 캡슐 = 기능, 누르면 켜고 끈다 (이 PC 에 기억)
+//   아래 캡슐 = 기능, 누르면 켜고 끈다 (이 PC 에 기억) · 단축키 · 기능 설정은 알림 영역 ✦ 오른쪽 클릭 메뉴에도
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
@@ -26,7 +26,8 @@ const store = {
 let off = new Set(store.get('magic.off') ?? []); // 캡슐로 꺼 둔 기능
 const isOn = (id) => !off.has(id);
 
-let sites = { web: [], ai: [], notice: null }; // notice: 단축키를 못 잡았을 때 안내
+let sites = { web: [], ai: [], notice: null, hotkey: '' }; // notice: 단축키를 못 잡았을 때 안내
+let recording = false; // 새 단축키를 기다리는 중
 let res = null; // 마지막 query 결과
 let rows = [];
 let selected = 0;
@@ -85,15 +86,18 @@ function renderModules() {
     chip.setAttribute('aria-pressed', String(isOn(m.id)));
     chip.append(el('span', 'chip-dot'), m.chip);
     chip.addEventListener('mousedown', (e) => e.preventDefault()); // 입력 칸 포커스 유지
-    chip.addEventListener('click', () => {
-      if (off.has(m.id)) off.delete(m.id);
-      else off.add(m.id);
-      store.set('magic.off', [...off]);
-      renderModules();
-      search();
-    });
+    chip.addEventListener('click', () => setModule(m.id, off.has(m.id)));
     return chip;
   }));
+}
+
+function setModule(id, on) {
+  if (on) off.delete(id);
+  else off.add(id);
+  store.set('magic.off', [...off]);
+  invoke('sync_modules', { off: [...off] }).catch(() => {}); // 알림 영역 메뉴 체크도 같게
+  renderModules();
+  search();
 }
 
 // ---------- 결과 ----------
@@ -194,13 +198,18 @@ function render() {
     if (count) li.append(el('span', 'count', String(count)));
     nodes.push(li);
   };
-  const note = (text) => {
-    const li = el('li', 'magic-note', text);
+  const note = (text, onClick) => {
+    const li = el('li', `magic-note${onClick ? ' action' : ''}`, text);
     li.setAttribute('role', 'presentation');
+    if (onClick) {
+      li.addEventListener('mousedown', (e) => e.preventDefault());
+      li.addEventListener('click', onClick);
+    }
     nodes.push(li);
   };
   const put = (r) => nodes.push(row(r, rows.push(r) - 1, query));
-  if (query && res) {
+  if (recording) note(`새 단축키를 누르세요 (Ctrl · Alt · Win 과 함께, 예: Ctrl+Shift+Space). 지금: ${sites.hotkey} · Esc 취소`);
+  else if (query && res) {
     if (res.calc) put({ ...res.calc, mod: 'calc', text: query });
     if (res.site) put({ kind: 'site', mod: 'site', url: res.site });
     const ask = () => isOn('ai') && put({ kind: 'ai', mod: 'ai', sites: sites.ai });
@@ -225,7 +234,7 @@ function render() {
     if (isOn('web')) put({ kind: 'web', mod: 'web', sites: sites.web });
     if (!res.question) ask();
     if (!rows.length && !searched) note(`'${query.slice(0, 30)}'와 맞는 결과가 없어요`);
-  } else if (sites.notice) note(sites.notice);
+  } else if (sites.notice) note(sites.notice, () => record(true));
   resultsEl.replaceChildren(...nodes);
   select(Math.min(selected, Math.max(0, rows.length - 1)), false);
   fit();
@@ -258,7 +267,7 @@ function updateHint() {
     parts.push(['↵', acts[activeAct]?.label ?? '']);
     if (acts.length > 1) parts.push(['← →', '할 일']);
   }
-  parts.push(['Esc', input.value ? '지우기' : '닫기']);
+  parts.push(['Esc', recording ? '취소' : input.value ? '지우기' : '닫기']);
   if (rows.length > 1) parts.push(['↑↓', '고르기']);
   hintEl.replaceChildren(...parts.map(([k, label]) => {
     const span = el('span');
@@ -350,7 +359,31 @@ function clearText() {
 clearBtn.addEventListener('mousedown', (e) => e.preventDefault());
 clearBtn.addEventListener('click', clearText);
 
+// ---------- 단축키 바꾸기 ----------
+function record(on) {
+  recording = on;
+  render();
+  input.focus();
+}
+
+const MOD_KEYS = /^(Control|Alt|Shift|Meta|OS)(Left|Right)?$/;
+async function takeKey(e) {
+  e.preventDefault();
+  if (e.key === 'Escape') return record(false);
+  if (MOD_KEYS.test(e.code) || !e.code) return; // 조합키만 누른 동안은 기다린다
+  const mods = [e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift', e.metaKey && 'super'].filter(Boolean);
+  try {
+    sites.hotkey = await invoke('set_hotkey', { key: [...mods, e.code].join('+') });
+    sites.notice = null;
+    record(false);
+    flash(true, `이제 ${sites.hotkey} 로 열어요`);
+  } catch (err) {
+    flash(false, String(err));
+  }
+}
+
 input.addEventListener('keydown', (e) => {
+  if (recording) return takeKey(e);
   if (e.isComposing) return; // 한글 조합 중
   const r = rows[selected];
   const acts = r ? actionsFor(r) : [];
@@ -387,6 +420,7 @@ input.addEventListener('keydown', (e) => {
 
 // 창이 떠오를 때마다: 지난 글은 남겨 두고 통째로 골라 둔다 (이어서 찾으려면 그대로, 새로 찾으려면 바로 치면 바뀐다)
 function onShow() {
+  recording = false;
   flashUntil = 0;
   selected = 0;
   activeAct = 0;
@@ -399,5 +433,8 @@ function onShow() {
   sites = await invoke('init').catch(() => sites);
   renderModules();
   render();
+  invoke('sync_modules', { off: [...off] }).catch(() => {});
+  await listen('magic:module', (e) => setModule(...e.payload)); // 알림 영역 메뉴 '설정 › 기능'
   await listen('magic:show', onShow);
+  await listen('magic:hotkey', () => record(true)); // 알림 영역 메뉴의 '단축키 바꾸기'
 })();
