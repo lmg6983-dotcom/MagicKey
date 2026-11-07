@@ -69,6 +69,15 @@ const ICONS = {
   ai: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z',
   date: 'M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM8 13h3v3H8z',
   check: 'M5 12.5l4.5 4.5L19 7.5',
+  // 결과 줄 아이콘 — 이모지 대신 같은 선 그림 (기능 색 칸 안에)
+  memo: 'M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h5',
+  lock: 'M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
+  file: 'M7 3h7l5 5v13H7zM14 3v5h5',
+  folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  app: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  opms: 'M4 21V5l8-2v18M12 8h8v13M7.5 8h1M7.5 12h1M7.5 16h1M15.5 12h1M15.5 16h1M3 21h18',
+  new: 'M12 5v14M5 12h14',
+  remind: 'M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0',
 };
 function svg(name) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -292,24 +301,24 @@ function row(r, index, query) {
     s.textContent = r.detail;
     s.title = r.detail;
   } else if (r.kind === 'new') {
-    ico.textContent = '✚';
+    ico.append(svg('new'));
     t.textContent = '새 메모로 저장';
     s.textContent = query;
   } else if (r.kind === 'remind') {
-    ico.textContent = '⏰';
+    ico.append(svg('remind'));
     t.textContent = '알림 맞춰 저장';
     s.textContent = '글 속 날짜 · 시각에 메모킹이 알림을 맞춰요';
   } else if (r.kind === 'opms') {
-    ico.textContent = '🏢';
+    ico.append(svg('opms'));
     t.textContent = r.more ? `OPMS 다른 ${r.more.toLocaleString()}건 더 보기` : 'OPMS 에서 찾기';
     s.textContent = `'${query.slice(0, 40)}' — 사건번호 · 출원인 · 발명자 · 초성`;
   } else if (r.kind === 'case') {
-    ico.textContent = '🏢';
+    ico.append(svg('opms'));
     t.append(highlighted([r.ourref, r.title].filter(Boolean).join(' '), query));
     s.textContent = [r.applicant, r.n_app, r.accepted].filter(Boolean).join(' · ');
     s.title = s.textContent;
   } else if (r.kind === 'memo') {
-    ico.textContent = r.locked ? '🔒' : '📝';
+    ico.append(svg(r.locked ? 'lock' : 'memo'));
     t.append(highlighted(r.title, query));
     s.textContent = r.snippet;
     s.title = r.snippet;
@@ -322,7 +331,7 @@ function row(r, index, query) {
     t.textContent = r.kind === 'web' ? '웹에서 찾기' : 'AI에게 묻기';
     s.textContent = r.sites.map(siteLabel).join(', ');
   } else {
-    ico.textContent = r.kind === 'folder' ? '📁' : r.kind === 'app' ? '🚀' : '📄';
+    ico.append(svg(r.kind));
     t.append(highlighted(r.name, query));
     s.textContent = r.path;
     s.title = r.path;
