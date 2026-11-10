@@ -491,7 +491,7 @@ function keyHint() {
   if (r) {
     const acts = actionsFor(r);
     parts.push(['↵', acts[activeAct]?.label ?? '']);
-    if (acts.length > 1) parts.push(['← →', '할 일']);
+    if (acts.length > 1) parts.push(['← →', '단추']);
   }
   parts.push(['Esc', recording ? '취소' : input.value ? '지우기' : '닫기']);
   if (rows.length > 1) parts.push(['↑↓', '고르기']);

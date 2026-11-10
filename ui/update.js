@@ -12,6 +12,7 @@ const ui = {
 };
 let st = { status: 'idle', current: '' };
 let shownNotes = null;
+let shownTitle = null;
 
 // 릴리스 글(docs/releases/v*.md) — 제목 · 목록 · 굵게만, 링크는 글자만 (글은 textContent 로만)
 function renderNotes(md) {
@@ -61,18 +62,22 @@ function versionLine() {
 function render() {
   const s = st.status;
   const hasUpdate = Boolean(st.version) && (s === 'available' || s === 'downloading' || (s === 'error' && st.version));
-  ui.title.textContent = {
+  const title = {
     checking: '업데이트 확인 중',
     latest: '최신 버전이에요',
     available: '새 버전이 나왔어요',
     downloading: '새 버전을 받는 중',
     error: st.manual ? '자동 업데이트 정보가 없어요' : hasUpdate ? '업데이트하지 못했어요' : '확인하지 못했어요',
   }[s] ?? 'MagicKey 업데이트';
-  if (s === 'checking' || s === 'downloading') { // 기다리는 동안 점 세 개가 차례로 (magic.css mk-dots)
-    const dots = Object.assign(document.createElement('span'), { className: 'mk-dots' });
-    dots.setAttribute('aria-hidden', 'true');
-    for (let i = 0; i < 3; i++) dots.append(Object.assign(document.createElement('i'), { textContent: '.' }));
-    ui.title.append(dots);
+  if (shownTitle !== title) { // 진행률마다 다시 그리면 점 애니메이션이 처음부터 다시 돈다
+    shownTitle = title;
+    ui.title.textContent = title;
+    if (s === 'checking' || s === 'downloading') { // 기다리는 동안 점 세 개가 차례로 (magic.css mk-dots)
+      const dots = Object.assign(document.createElement('span'), { className: 'mk-dots' });
+      dots.setAttribute('aria-hidden', 'true');
+      for (let i = 0; i < 3; i++) dots.append(Object.assign(document.createElement('i'), { textContent: '.' }));
+      ui.title.append(dots);
+    }
   }
   versionLine();
   ui.notesBox.hidden = !hasUpdate;

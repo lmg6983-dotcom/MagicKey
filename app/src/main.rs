@@ -418,7 +418,7 @@ fn open_update(app: &AppHandle) {
     }
     let _ = tauri::WebviewWindowBuilder::new(app, "update", tauri::WebviewUrl::App("update.html".into()))
         .title("MagicKey 업데이트")
-        .inner_size(460.0, 440.0)
+        .inner_size(460.0, 172.0) // "확인 중" 화면 높이 — 뒤에 update.js fit 이 내용에 맞춘다
         .resizable(false)
         .maximizable(false)
         .minimizable(false)
