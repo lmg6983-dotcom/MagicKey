@@ -547,6 +547,12 @@ function askOpms(q) {
 }
 
 const hide = () => invoke('hide');
+// 안내를 보인 뒤 조금 있다 숨기기 — 그사이 창을 다시 띄웠거나 글을 치면 그만둔다 (새로 연 창이 저절로 닫히지 않게)
+let hideTimer = 0;
+const hideSoon = () => {
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(hide, 2400);
+};
 
 async function run(i, act = 0) {
   const r = rows[i];
@@ -588,7 +594,7 @@ async function run(i, act = 0) {
     }
     if (msg) {
       flash(true, msg);
-      setTimeout(hide, 2400); // 안내를 읽을 틈을 두고
+      hideSoon(); // 안내를 읽을 틈을 두고
     } else hide();
   } catch (err) {
     flash(false, String(err));
@@ -604,6 +610,7 @@ function grow() {
 let searchTimer = 0;
 let pending = false; // 친 글을 아직 찾지 않았다 (Enter 가 지난 글의 결과를 실행하지 않게)
 input.addEventListener('input', () => {
+  clearTimeout(hideTimer);
   grow();
   selected = 0;
   pending = true;
@@ -707,6 +714,7 @@ function onShow() {
       render();
     }
   }).catch(() => {});
+  clearTimeout(hideTimer);
   grow();
   flashUntil = 0;
   selected = 0;

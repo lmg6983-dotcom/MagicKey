@@ -3,10 +3,10 @@
 //   Ctrl+Alt+Space 를 먼저 가로챌 수 있었다. 훅은 그보다 앞에서 보고, 우리 키면 삼켜서 다른 곳에 가지 않게 한다.
 //   - 관리자 권한 창이 앞에 있으면 훅이 불리지 않는다 (Windows 규칙) — 그때는 main.rs 의 전역 단축키가 대신 연다
 //   - 새 단축키를 고르는 동안(단축키 창이 앞에 있을 때만)은 모든 조합을 받아 창에 넘긴다 — Ctrl+Space · Win+… 도 고를 수 있게
+//   - 여는 키를 받으면 삼키고 main.rs hotkey_pressed 에 알린다 (열지 말지 · 두 번 받은 것 거르기는 거기서)
 //   - 뒤에 켜진 프로그램의 훅이 앞서지 않게, 그리고 Windows 가 느린 훅을 몰래 떼는 일에 대비해 30초마다 다시 건다
 use serde::Serialize;
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
@@ -106,34 +106,37 @@ struct State {
     key: Option<(Modifiers, u16)>,
     /// 새 키를 고르는 단축키 창 — 이 창이 앞에 있을 때만 키를 받는다
     recording: Option<isize>,
-    /// 삼킨 키와 마지막으로 본 때(ms) — 뗄 때 · 꾹 눌러 반복될 때도 삼킨다 (떼는 것을 놓쳤으면 1초 뒤 잊는다)
+    /// 삼킨 키와 마지막으로 본 때(ms) — 뗄 때 · 꾹 눌러 반복될 때도 삼킨다 (떼는 것을 놓쳤으면 HELD_MS 뒤 잊는다)
     held: Option<(u16, u32)>,
     /// 고르는 동안 마지막으로 보낸 조합키 (같으면 다시 보내지 않는다)
     sent: Option<Modifiers>,
     /// 한/영 · 한자 키를 누른 때(ms, 떼면 None) — 아래 win::korean
     kor: [Option<u32>; 2],
-    /// 삼킨 한/영 · 한자 키 (뗄 때도 삼킨다)
+    /// 삼킨 한/영 · 한자 키 — 조합키로 친다 (kor_mods)
     kor_eaten: Modifiers,
+    /// 누를 때 삼켜서 뗄 때도 삼킬 한/영 · 한자 키 (단축키로 쓰고 잊은 뒤에도 — 떼는 신호만 입력기에 가지 않게)
+    kor_up: Modifiers,
 }
 
-static STATE: Mutex<State> = Mutex::new(State { key: None, recording: None, held: None, sent: None, kor: [None; 2], kor_eaten: Modifiers::empty() });
+static STATE: Mutex<State> =
+    Mutex::new(State { key: None, recording: None, held: None, sent: None, kor: [None; 2], kor_eaten: Modifiers::empty(), kor_up: Modifiers::empty() });
 static APP: OnceLock<AppHandle> = OnceLock::new();
-/// 훅이 마지막으로 창을 연 때
-static FIRED: Mutex<Option<Instant>> = Mutex::new(None);
 
-/// 훅이 방금(0.5초 안) 창을 열었나 — 전역 단축키가 같은 누름으로 한 번 더 열고 닫지 않게
-pub fn just_fired() -> bool {
-    FIRED.lock().unwrap().is_some_and(|t| t.elapsed() < Duration::from_millis(500))
+/// 훅은 Windows 가 부르는 함수 안에서 돈다 — 거기서 패닉하면 앱이 통째로 꺼지니, 다른 스레드가 잠근 채 죽었어도 그대로 쓴다
+fn state() -> MutexGuard<'static, State> {
+    STATE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// 여는 키를 바꾼다 (훅이 보는 키)
 pub fn set_key(s: &Shortcut) {
-    STATE.lock().unwrap().key = code_vk(s.key).map(|vk| (s.mods, vk));
+    let mut st = state();
+    st.key = code_vk(s.key).map(|vk| (s.mods, vk));
+    st.held = None; // 지난 키를 누르던 것은 잊는다
 }
 
 /// 새 키 고르기 시작 · 끝 (hwnd: 단축키 창)
 pub fn record(hwnd: Option<isize>) {
-    let mut st = STATE.lock().unwrap();
+    let mut st = state();
     st.recording = hwnd;
     st.sent = None;
 }
@@ -188,6 +191,9 @@ mod win {
     //   Ctrl + 한/영 + Space 가 Windows 에는 Ctrl+Space 로 가서 그 키를 쓰는 기능이 열렸다. 여기서는 Alt · Ctrl 로 본다.
     //   이 키들은 떼는 신호가 없을 때가 많아(눌린 채로 남음), 누른 뒤 1초 안에만 누르고 있는 것으로 친다
     const KOR_HOLD_MS: u32 = 1000;
+    // 삼킨 키를 누르고 있는 것으로 치는 동안 — 꾹 누르면 반복 신호가 올 때마다 다시 센다.
+    //   Windows 의 '반복 지연' 이 가장 길 때(1초)보다 길게: 짧으면 꾹 누른 키가 새로 누른 것으로 보여 창이 다시 닫힌다
+    const HELD_MS: u32 = 1500;
 
     /// 한/영 → Alt, 한자 → Ctrl (kor 칸 번호와 함께)
     fn korean(vk: u16) -> Option<(usize, Modifiers)> {
@@ -261,7 +267,7 @@ mod win {
     /// true 면 삼킨다 (다른 프로그램에 가지 않음)
     fn handle(msg: u32, vk: u16, at: u32) -> bool {
         let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
-        let mut st = STATE.lock().unwrap();
+        let mut st = state();
         let recording = st.recording.is_some_and(|h| unsafe { GetForegroundWindow() } as isize == h);
         let korean = korean(vk);
         let mut eat = false;
@@ -272,10 +278,12 @@ mod win {
                 eat = recording || (need.contains(m) && mods_now(Modifiers::empty()).intersects(need - m));
                 st.kor[i] = Some(at);
                 st.kor_eaten.set(m, eat);
+                st.kor_up.set(m, eat);
             } else {
                 st.kor[i] = None;
-                eat = st.kor_eaten.contains(m);
+                eat = st.kor_up.contains(m);
                 st.kor_eaten.remove(m);
+                st.kor_up.remove(m);
             }
         }
         if korean.is_some() || is_mod(vk) {
@@ -292,7 +300,7 @@ mod win {
             }
             return eat; // 조합키는 그대로 보낸다 (눌린 채로 남지 않게) — 한/영 · 한자는 위에서 정한 대로
         }
-        let held = st.held.is_some_and(|(k, t)| k == vk && at.wrapping_sub(t) < 1000);
+        let held = st.held.is_some_and(|(k, t)| k == vk && at.wrapping_sub(t) < HELD_MS);
         if !down {
             if held {
                 st.held = None;
@@ -324,14 +332,13 @@ mod win {
         }
         if st.key == Some((mods, vk)) {
             st.held = Some((vk, at));
-            st.kor = [None; 2]; // 한/영은 떼는 신호가 없을 수 있다 — 한 번 쓰면 잊는다
+            st.kor = [None; 2]; // 한/영은 떼는 신호가 없을 수 있다 — 한 번 쓰면 잊는다 (떼는 신호가 오면 그것은 삼킨다: kor_up)
             st.kor_eaten = Modifiers::empty();
             drop(st);
             mask(mods);
-            *FIRED.lock().unwrap() = Some(Instant::now());
             if let Some(app) = APP.get() {
                 let a = app.clone();
-                let _ = app.run_on_main_thread(move || crate::toggle(&a));
+                let _ = app.run_on_main_thread(move || crate::hotkey_pressed(&a));
             }
             return true;
         }
