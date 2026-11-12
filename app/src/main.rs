@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::Wry;
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
@@ -22,6 +22,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
+mod front;
 mod keyhook;
 
 const STALE: Duration = Duration::from_secs(10 * 60); // 매직키를 열 때 이보다 오래된 목록이면 뒤에서 새로 만든다
@@ -712,19 +713,89 @@ fn open_web(app: AppHandle, kind: String, site: String, text: String) -> Result<
 #[tauri::command]
 fn hide(app: AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.hide();
+        hide_main(&w);
     }
 }
 
-/// 단축키: 숨어 있으면 띄우고, 떠 있으면 숨긴다
-fn toggle(app: &AppHandle) {
+/// 매직키 창이 뜬 뒤 정말 맨 앞에 왔나 — 와 본 창만 '다른 곳을 누르면 숨는다'.
+///   띄우는 중에는 포커스를 받기도 전에 잃었다는 신호가 먼저 올 수 있다 (그것으로 숨기면 단축키를 눌러도 아무것도 안 뜬다)
+static ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// 이 창이 지금 맨 앞(키 입력을 받는 창)인가 — Windows 에 직접 묻는다.
+///   is_focused 는 창 자신이 포커스를 가졌는지를 보는데, 글을 치는 동안 포커스는 창 안의 웹뷰에 있다 — 그래서 떠 있는 창을
+///   '앞에 없다' 고 보고 단축키로 닫지 못했다
+fn is_front(w: &tauri::WebviewWindow) -> bool {
+    #[cfg(windows)]
+    return w.hwnd().is_ok_and(|h| front::is_front(h.0 as isize));
+    #[cfg(not(windows))]
+    return w.is_focused().unwrap_or(false);
+}
+
+fn hide_main(w: &tauri::WebviewWindow) {
+    ACTIVE.store(false, Ordering::SeqCst);
+    let _ = w.hide();
+}
+
+/// 매직키 창이 포커스를 얻었다 · 잃었다 — 정말 다른 창이 앞에 왔을 때만 숨긴다
+fn main_focus(app: &AppHandle, focused: bool) {
     let Some(w) = app.get_webview_window("main") else { return };
-    if w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false) {
-        let _ = w.hide();
+    let front = is_front(&w);
+    if focused {
+        if front {
+            ACTIVE.store(true, Ordering::SeqCst); // 늦게라도(눌러서) 앞에 왔다
+        }
+    } else if ACTIVE.load(Ordering::SeqCst) && !(cfg!(windows) && front) {
+        hide_main(&w);
+    }
+}
+
+/// 여는 단축키가 눌렸다 — 키보드 훅 · 전역 단축키 어느 쪽에서 왔든 여기로
+pub(crate) fn hotkey_pressed(app: &AppHandle) {
+    // 한 번 누른 것을 둘 다 받았으면 한 번만 (열렸다 바로 닫히지 않게)
+    static LAST: Mutex<Option<Instant>> = Mutex::new(None);
+    {
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if last.is_some_and(|t| t.elapsed() < Duration::from_millis(300)) {
+            return;
+        }
+        *last = Some(Instant::now());
+    }
+    // 단축키 창이 앞에 있으면 열지 않는다 — 새 키를 고른 뒤 저장하기 전에 지금 키를 눌러도 매직키가 튀어나오지 않게
+    if app.get_webview_window("hotkey").is_some_and(|h| is_front(&h)) {
         return;
     }
+    toggle(app);
+}
+
+/// 숨어 있으면 띄우고, 떠 있으면 숨긴다
+fn toggle(app: &AppHandle) {
+    let Some(w) = app.get_webview_window("main") else { return };
+    if w.is_visible().unwrap_or(false) && is_front(&w) {
+        hide_main(&w);
+        return;
+    }
+    show_main(app);
+}
+
+/// 매직키 창을 띄워 맨 앞으로 (떠 있는데 뒤에 있으면 앞으로만)
+fn show_main(app: &AppHandle) {
+    let Some(w) = app.get_webview_window("main") else { return };
+    ACTIVE.store(false, Ordering::SeqCst);
     let _ = w.show();
+    #[cfg(windows)]
+    {
+        if !w.hwnd().is_ok_and(|h| front::bring(h.0 as isize)) {
+            let _ = w.set_focus(); // 입력을 붙이지 못했으면 tao 의 방법(Alt 를 눌렀다 떼고 앞으로)으로
+        }
+    }
+    #[cfg(not(windows))]
     let _ = w.set_focus();
+    let front = is_front(&w);
+    ACTIVE.store(front, Ordering::SeqCst);
+    // 창이 이미 앞에 있었으면 포커스가 웹뷰로 넘어가지 않을 수 있다 — 바로 글을 칠 수 있게 웹뷰에 준다
+    if cfg!(windows) && front {
+        let _ = AsRef::<tauri::Webview>::as_ref(&w).set_focus();
+    }
     let _ = w.emit("magic:show", ());
     let idx = app.state::<Arc<Index>>();
     idx.shown.lock().unwrap().clear();
@@ -736,7 +807,7 @@ fn toggle(app: &AppHandle) {
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| toggle(app))) // 두 번 켜면 이미 켜진 창을 띄운다
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| show_main(app))) // 두 번 켜면 이미 켜진 창을 띄운다
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
@@ -744,9 +815,9 @@ fn main() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _, e| {
-                    // 훅이 방금 열었으면 두 번 열고 닫지 않게 (훅이 삼킨 키는 보통 여기 오지 않지만, 혹시 와도)
-                    if e.state() == ShortcutState::Pressed && !keyhook::just_fired() {
-                        toggle(app);
+                    // 훅이 삼킨 키는 보통 여기 오지 않는다 — 혹시 둘 다 받아도 hotkey_pressed 가 한 번만 연다
+                    if e.state() == ShortcutState::Pressed {
+                        hotkey_pressed(app);
                     }
                 })
                 .build(),
@@ -813,7 +884,7 @@ fn main() {
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(move |app, e| match e.id.as_ref() {
-                    "open" => toggle(app),
+                    "open" => show_main(app),
                     "hotkey" => open_hotkey(app),
                     "autostart" => {
                         let al = app.autolaunch();
@@ -856,15 +927,13 @@ fn main() {
             show_key(app.handle(), &hotkey, hooked || registered);
             if !hooked && !registered {
                 *app.state::<Hotkey>().notice.lock().unwrap() = Some(format!("{} 를 다른 프로그램이 쓰고 있어요. 여기를 눌러 다른 키로 바꾸세요", key_label(&hotkey)));
-                toggle(app.handle());
+                show_main(app.handle());
             }
             Ok(())
         })
         .on_window_event(|w, e| {
             match (e, w.label()) {
-                (WindowEvent::Focused(false), "main") => {
-                    let _ = w.hide(); // 다른 곳을 누르면 숨는다 (업데이트 · 단축키 창은 그대로)
-                }
+                (WindowEvent::Focused(focused), "main") => main_focus(w.app_handle(), *focused), // 다른 곳을 누르면 숨는다 (업데이트 · 단축키 창은 그대로)
                 (WindowEvent::Destroyed, "hotkey") => keyhook::record(None), // (창이 앞에 있을 때만 받는 것은 훅이 본다)
                 _ => {}
             }
