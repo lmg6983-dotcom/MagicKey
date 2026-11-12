@@ -6,6 +6,7 @@
 //   - 뒤에 켜진 프로그램의 훅이 앞서지 않게, 그리고 Windows 가 느린 훅을 몰래 떼는 일에 대비해 30초마다 다시 건다
 use serde::Serialize;
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
@@ -115,6 +116,13 @@ struct State {
 
 static STATE: Mutex<State> = Mutex::new(State { key: None, recording: None, held: None, sent: None, right: Modifiers::empty() });
 static APP: OnceLock<AppHandle> = OnceLock::new();
+/// 훅이 마지막으로 창을 연 때
+static FIRED: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// 훅이 방금(0.5초 안) 창을 열었나 — 전역 단축키가 같은 누름으로 한 번 더 열고 닫지 않게
+pub fn just_fired() -> bool {
+    FIRED.lock().unwrap().is_some_and(|t| t.elapsed() < Duration::from_millis(500))
+}
 
 /// 여는 키를 바꾼다 (훅이 보는 키)
 pub fn set_key(s: &Shortcut) {
@@ -289,6 +297,7 @@ mod win {
             st.held = Some((vk, at));
             drop(st);
             mask(mods);
+            *FIRED.lock().unwrap() = Some(Instant::now());
             if let Some(app) = APP.get() {
                 let a = app.clone();
                 let _ = app.run_on_main_thread(move || crate::toggle(&a));
