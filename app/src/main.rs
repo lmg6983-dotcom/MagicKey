@@ -562,12 +562,14 @@ fn hotkey_open(app: AppHandle) {
 struct KeyInfo {
     parts: Vec<String>,
     key: String,
+    problem: Option<String>,
     warn: Option<String>,
 }
 
 impl KeyInfo {
     fn of(s: Shortcut) -> Self {
-        KeyInfo { parts: keyhook::parts(s.mods, Some(s.key)), key: s.to_string(), warn: keyhook::check(&s).1 }
+        let (problem, warn) = keyhook::check(&s);
+        KeyInfo { parts: keyhook::parts(s.mods, Some(s.key)), key: s.to_string(), problem, warn }
     }
 }
 
@@ -576,13 +578,21 @@ struct HotkeyInfo {
     now: KeyInfo,
     /// 추천 — 맨 앞이 기본값
     suggest: Vec<KeyInfo>,
+    /// 키보드 훅을 걸었나 (아니면 창이 키를 직접 받고, 다른 프로그램이 먼저 가져가는 키는 못 고른다)
+    hooked: bool,
+}
+
+/// 창이 직접 받은 키(훅이 없을 때) — 글쇠 이름 · 쓸 수 있는지
+#[tauri::command]
+fn hotkey_info(key: String) -> Result<KeyInfo, String> {
+    key.parse::<Shortcut>().map(KeyInfo::of).map_err(|_| "이 키는 단축키로 쓸 수 없어요".into())
 }
 
 #[tauri::command]
 fn hotkey_state(hk: State<Hotkey>) -> HotkeyInfo {
     let (ca, cs) = (Modifiers::CONTROL | Modifiers::ALT, Modifiers::CONTROL | Modifiers::SHIFT);
     let suggest = [default_key(), Shortcut::new(Some(Modifiers::ALT), Code::Space), Shortcut::new(Some(cs), Code::Space), Shortcut::new(Some(ca), Code::KeyM)];
-    HotkeyInfo { now: KeyInfo::of(*hk.now.lock().unwrap()), suggest: suggest.into_iter().map(KeyInfo::of).collect() }
+    HotkeyInfo { now: KeyInfo::of(*hk.now.lock().unwrap()), suggest: suggest.into_iter().map(KeyInfo::of).collect(), hooked: hk.hooked }
 }
 
 /// 새 키 고르기 시작 · 끝 — 고르는 동안 누른 조합은 이 창에만 간다 (hotkey:pressed)
@@ -855,11 +865,11 @@ fn main() {
                 (WindowEvent::Focused(false), "main") => {
                     let _ = w.hide(); // 다른 곳을 누르면 숨는다 (업데이트 · 단축키 창은 그대로)
                 }
-                (WindowEvent::Focused(false) | WindowEvent::Destroyed, "hotkey") => keyhook::record(None), // 키 고르기는 이 창이 앞에 있을 때만
+                (WindowEvent::Destroyed, "hotkey") => keyhook::record(None), // (창이 앞에 있을 때만 받는 것은 훅이 본다)
                 _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, hotkey_open, hotkey_state, hotkey_record, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, hotkey_open, hotkey_state, hotkey_info, hotkey_record, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }
