@@ -591,7 +591,7 @@ fn hotkey_record(on: bool, window: tauri::WebviewWindow) {
     #[cfg(windows)]
     let hwnd = window.hwnd().ok().map(|h| h.0 as isize);
     #[cfg(not(windows))]
-    let hwnd = Some(0).filter(|_| window.label() == "hotkey");
+    let hwnd = (window.label() == "hotkey").then_some(0);
     keyhook::record(hwnd.filter(|_| on));
 }
 
@@ -734,7 +734,8 @@ fn main() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _, e| {
-                    if e.state() == ShortcutState::Pressed {
+                    // 훅이 방금 열었으면 두 번 열고 닫지 않게 (훅이 삼킨 키는 보통 여기 오지 않지만, 혹시 와도)
+                    if e.state() == ShortcutState::Pressed && !keyhook::just_fired() {
                         toggle(app);
                     }
                 })
