@@ -109,9 +109,11 @@ struct State {
     held: Option<(u16, u32)>,
     /// 고르는 동안 마지막으로 보낸 조합키 (같으면 다시 보내지 않는다)
     sent: Option<Modifiers>,
+    /// 한국어 자판의 오른쪽 Alt(한/영) · 오른쪽 Ctrl(한자)을 누르고 있나 — 훅이 본 누름 · 뗌으로 (아래 win::korean)
+    right: Modifiers,
 }
 
-static STATE: Mutex<State> = Mutex::new(State { key: None, recording: None, held: None, sent: None });
+static STATE: Mutex<State> = Mutex::new(State { key: None, recording: None, held: None, sent: None, right: Modifiers::empty() });
 static APP: OnceLock<AppHandle> = OnceLock::new();
 
 /// 여는 키를 바꾼다 (훅이 보는 키)
@@ -173,28 +175,37 @@ mod win {
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
     // 한국어 자판은 오른쪽 Alt 가 한/영(VK_HANGUL), 오른쪽 Ctrl 이 한자(VK_HANJA) 키다 — 그대로 두면 오른쪽 Alt 로 누른
-    //   Ctrl+Alt+Space 가 Windows 에는 Ctrl+Space 로 가서 그 키를 쓰는 기능이 열렸다. 여기서는 Alt · Ctrl 로 본다
+    //   Ctrl+Alt+Space 가 Windows 에는 Ctrl+Space 로 가서 그 키를 쓰는 기능이 열렸다. 여기서는 Alt · Ctrl 로 본다.
+    //   따로 있는 한/영 · 한자 키는 떼는 신호가 없어(눌린 채로 남아) 빼고, 자리가 오른쪽 Alt · Ctrl(스캔 코드 + 확장 키)인 것만
+    fn korean(vk: u16, scan: u32, extended: bool) -> Option<Modifiers> {
+        match (vk, scan, extended) {
+            (VK_HANGUL, 0x38, true) => Some(Modifiers::ALT),
+            (VK_HANJA, 0x1D, true) => Some(Modifiers::CONTROL),
+            _ => None,
+        }
+    }
+
     fn is_mod(vk: u16) -> bool {
-        matches!(vk, VK_CONTROL | VK_LCONTROL | VK_RCONTROL | VK_HANJA | VK_MENU | VK_LMENU | VK_RMENU | VK_HANGUL | VK_SHIFT | VK_LSHIFT | VK_RSHIFT | VK_LWIN | VK_RWIN)
+        matches!(vk, VK_CONTROL | VK_LCONTROL | VK_RCONTROL | VK_MENU | VK_LMENU | VK_RMENU | VK_SHIFT | VK_LSHIFT | VK_RSHIFT | VK_LWIN | VK_RWIN)
     }
 
     fn mod_of(vk: u16) -> Modifiers {
         match vk {
-            VK_CONTROL | VK_LCONTROL | VK_RCONTROL | VK_HANJA => Modifiers::CONTROL,
-            VK_MENU | VK_LMENU | VK_RMENU | VK_HANGUL => Modifiers::ALT,
+            VK_CONTROL | VK_LCONTROL | VK_RCONTROL => Modifiers::CONTROL,
+            VK_MENU | VK_LMENU | VK_RMENU => Modifiers::ALT,
             VK_SHIFT | VK_LSHIFT | VK_RSHIFT => Modifiers::SHIFT,
             _ => Modifiers::SUPER,
         }
     }
 
-    /// 지금 눌려 있는 조합키 (훅 안에서는 이번 키는 아직 반영 전)
-    fn mods_now() -> Modifiers {
+    /// 지금 눌려 있는 조합키 (훅 안에서는 이번 키는 아직 반영 전) — right: 오른쪽 한/영 · 한자
+    fn mods_now(right: Modifiers) -> Modifiers {
         let down = |vk: u16| unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0;
-        let mut m = Modifiers::empty();
-        if down(VK_CONTROL) || down(VK_HANJA) {
+        let mut m = right;
+        if down(VK_CONTROL) {
             m |= Modifiers::CONTROL;
         }
-        if down(VK_MENU) || down(VK_HANGUL) {
+        if down(VK_MENU) {
             m |= Modifiers::ALT;
         }
         if down(VK_SHIFT) {
@@ -223,14 +234,19 @@ mod win {
     }
 
     /// true 면 삼킨다 (다른 프로그램에 가지 않음)
-    fn handle(msg: u32, vk: u16, at: u32) -> bool {
+    fn handle(msg: u32, vk: u16, scan: u32, extended: bool, at: u32) -> bool {
         let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
         let mut st = STATE.lock().unwrap();
         let recording = st.recording.is_some_and(|h| unsafe { GetForegroundWindow() } as isize == h);
-        if is_mod(vk) {
+        let korean = korean(vk, scan, extended);
+        if let Some(m) = korean {
+            st.right.set(m, down);
+        }
+        if korean.is_some() || is_mod(vk) {
             if recording {
                 // 누르고 있는 조합키를 글쇠로 바로 보인다 (훅 안에서는 이번 키가 아직 반영 전이라 직접 더하고 뺀다)
-                let m = if down { mods_now() | mod_of(vk) } else { mods_now() - mod_of(vk) };
+                let this = korean.unwrap_or_else(|| mod_of(vk));
+                let m = if down { mods_now(st.right) | this } else { mods_now(st.right) - this };
                 if st.sent != Some(m) && st.held.is_none() {
                     st.sent = Some(m);
                     drop(st);
@@ -250,7 +266,7 @@ mod win {
             st.held = Some((vk, at)); // 꾹 눌러 반복
             return true;
         }
-        let mods = mods_now();
+        let mods = mods_now(st.right);
         if recording {
             st.held = Some((vk, at));
             st.sent = None;
@@ -286,7 +302,7 @@ mod win {
         if code == HC_ACTION as i32 {
             let k = &*(l as *const KBDLLHOOKSTRUCT);
             // 보낸 키(SendInput — 우리 0xE8 · 창 띄울 때의 Alt 포함)는 보지 않는다
-            if k.flags & LLKHF_INJECTED == 0 && handle(w as u32, k.vkCode as u16, k.time) {
+            if k.flags & LLKHF_INJECTED == 0 && handle(w as u32, k.vkCode as u16, k.scanCode, k.flags & LLKHF_EXTENDED != 0, k.time) {
                 return 1;
             }
         }
