@@ -2246,7 +2246,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "magickey"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "chrono",
  "magickey-core",
@@ -2261,11 +2261,12 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
 name = "magickey-core"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "chrono",
  "fancy-regex",

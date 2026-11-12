@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>MagicKey 단축키</title>
+  <link rel="stylesheet" href="magic.css" />
+  <link rel="stylesheet" href="update.css" />
+  <link rel="stylesheet" href="hotkey.css" />
+</head>
+<body>
+  <!-- 단축키 창: 칸을 누르고(창을 열면 바로) 새 조합을 누르면 글쇠로 보이고 → 저장. 키는 키보드 훅으로 받아 Ctrl+Space · Win+… 도 고를 수 있다 -->
+  <main class="upd hk" aria-labelledby="hk-title">
+    <header class="upd-head">
+      <span class="upd-badge" aria-hidden="true"><img src="icon.png" alt=""></span>
+      <div>
+        <h1 id="hk-title">단축키 바꾸기</h1>
+        <p class="hk-sub">어디서든 이 키로 MagicKey 를 열어요</p>
+      </div>
+    </header>
+    <button type="button" class="hk-field" id="hk-field" aria-describedby="hk-prompt hk-status">
+      <span class="hk-keys" id="hk-keys" aria-hidden="true"></span>
+      <span class="hk-prompt" id="hk-prompt"></span>
+    </button>
+    <p class="hk-status" id="hk-status" role="status" aria-live="polite"></p>
+    <div class="hk-suggest" role="group" aria-labelledby="hk-suggest-title">
+      <span class="hk-suggest-title" id="hk-suggest-title">추천</span>
+      <span class="hk-chips" id="hk-chips"></span>
+    </div>
+    <div class="upd-actions hk-actions">
+      <button type="button" class="hk-reset" id="hk-reset">기본값으로</button>
+      <button type="button" class="upd-btn" id="hk-cancel">닫기</button>
+      <button type="button" class="upd-btn primary" id="hk-save" disabled>저장</button>
+    </div>
+  </main>
+  <script src="hotkey.js"></script>
+</body>
+</html>

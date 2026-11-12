@@ -22,6 +22,8 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
+mod keyhook;
+
 const STALE: Duration = Duration::from_secs(10 * 60); // 매직키를 열 때 이보다 오래된 목록이면 뒤에서 새로 만든다
 
 struct Index {
@@ -281,23 +283,21 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
     })
 }
 
-/// 여는 단축키 — 지금 키, 기억할 파일, 못 잡았을 때 창에 띄울 안내
+/// 여는 단축키 — 지금 키, 기억할 파일, 키보드 훅을 걸었는가, 못 잡았을 때 창에 띄울 안내
 struct Hotkey {
     now: Mutex<Shortcut>,
     file: PathBuf,
+    hooked: bool,
     notice: Mutex<Option<String>>,
+}
+
+fn default_key() -> Shortcut {
+    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space)
 }
 
 /// 사람이 읽는 이름: Ctrl+Alt+Space, Ctrl+Shift+K, Alt+1
 fn key_label(s: &Shortcut) -> String {
-    let mut out = String::new();
-    for (m, name) in [(Modifiers::CONTROL, "Ctrl+"), (Modifiers::ALT, "Alt+"), (Modifiers::SHIFT, "Shift+"), (Modifiers::SUPER, "Win+")] {
-        if s.mods.contains(m) {
-            out.push_str(name);
-        }
-    }
-    let key = s.key.to_string();
-    out + key.strip_prefix("Key").or_else(|| key.strip_prefix("Digit")).unwrap_or(&key)
+    keyhook::parts(s.mods, Some(s.key)).join("+")
 }
 
 /// 창의 기능 캡슐과 같은 것 — 알림 영역 메뉴 '설정' 에서도 켜고 끈다 (id 는 magic.js MODULES 와 같게)
@@ -499,33 +499,6 @@ fn show_key(app: &AppHandle, s: &Shortcut, ok: bool) {
     }
 }
 
-/// 메모킹(0.77~)은 magickey.json 을 보고 1분 안에 매직키 단축키를 놓는다 — 그동안 조용히 다시 잡아 보고, 2분이 지나도 못 잡으면 창을 띄워 알린다
-fn retry_hotkey(app: AppHandle) {
-    std::thread::spawn(move || {
-        for _ in 0..12 {
-            std::thread::sleep(Duration::from_secs(10));
-            let (tx, rx) = std::sync::mpsc::channel();
-            let a = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                let hk = a.state::<Hotkey>();
-                let key = *hk.now.lock().unwrap(); // 그사이 단축키를 바꿨으면 그 키
-                let gs = a.global_shortcut();
-                let ok = gs.is_registered(key) || gs.register(key).is_ok();
-                if ok {
-                    *hk.notice.lock().unwrap() = None;
-                    show_key(&a, &key, true);
-                }
-                let _ = tx.send(ok);
-            });
-            if rx.recv().unwrap_or(false) {
-                return;
-            }
-        }
-        let a = app.clone();
-        let _ = app.run_on_main_thread(move || toggle(&a));
-    });
-}
-
 #[derive(Serialize)]
 struct Init {
     web: &'static [web::Site],
@@ -562,30 +535,89 @@ fn open_memo(app: AppHandle, id: String, notes: State<Arc<Memos>>) -> Result<(),
     }
 }
 
-/// 단축키 바꾸기 (key = "ctrl+shift+KeyK" 꼴) — 새 키를 잡은 뒤에야 옛 키를 놓는다 (못 잡으면 그대로)
+/// 단축키 창 — 알림 영역 메뉴 '단축키 바꾸기' · 매직키 창의 안내에서 연다 (새 키는 키보드 훅으로 받는다: keyhook.rs)
+fn open_hotkey(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("hotkey") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let _ = tauri::WebviewWindowBuilder::new(app, "hotkey", tauri::WebviewUrl::App("hotkey.html".into()))
+        .title("MagicKey 단축키")
+        .inner_size(440.0, 360.0) // hotkey.js fit 이 내용에 맞춘다
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .center()
+        .build();
+}
+
+#[tauri::command]
+fn hotkey_open(app: AppHandle) {
+    open_hotkey(&app);
+}
+
+#[derive(Serialize)]
+struct KeyInfo {
+    parts: Vec<String>,
+    key: String,
+    warn: Option<String>,
+}
+
+impl KeyInfo {
+    fn of(s: Shortcut) -> Self {
+        KeyInfo { parts: keyhook::parts(s.mods, Some(s.key)), key: s.to_string(), warn: keyhook::check(&s).1 }
+    }
+}
+
+#[derive(Serialize)]
+struct HotkeyInfo {
+    now: KeyInfo,
+    /// 추천 — 맨 앞이 기본값
+    suggest: Vec<KeyInfo>,
+}
+
+#[tauri::command]
+fn hotkey_state(hk: State<Hotkey>) -> HotkeyInfo {
+    let (ca, cs) = (Modifiers::CONTROL | Modifiers::ALT, Modifiers::CONTROL | Modifiers::SHIFT);
+    let suggest = [default_key(), Shortcut::new(Some(Modifiers::ALT), Code::Space), Shortcut::new(Some(cs), Code::Space), Shortcut::new(Some(ca), Code::KeyM)];
+    HotkeyInfo { now: KeyInfo::of(*hk.now.lock().unwrap()), suggest: suggest.into_iter().map(KeyInfo::of).collect() }
+}
+
+/// 새 키 고르기 시작 · 끝 — 고르는 동안 누른 조합은 이 창에만 간다 (hotkey:pressed)
+#[tauri::command]
+fn hotkey_record(on: bool, window: tauri::WebviewWindow) {
+    #[cfg(windows)]
+    let hwnd = window.hwnd().ok().map(|h| h.0 as isize);
+    #[cfg(not(windows))]
+    let hwnd = Some(0).filter(|_| window.label() == "hotkey");
+    keyhook::record(hwnd.filter(|_| on));
+}
+
+/// 단축키 바꾸기 (key = "control+shift+KeyK" 꼴)
 #[tauri::command]
 fn set_hotkey(app: AppHandle, key: String, hk: State<Hotkey>) -> Result<String, String> {
     let new: Shortcut = key.parse().map_err(|_| "이 키는 단축키로 쓸 수 없어요".to_string())?;
-    if !new.mods.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER) {
-        return Err("Ctrl · Alt · Win 중 하나와 함께 눌러 주세요".into());
+    if let (Some(why), _) = keyhook::check(&new) {
+        return Err(why);
     }
-    let label = key_label(&new);
     let mut now = hk.now.lock().unwrap();
     let gs = app.global_shortcut();
-    if new.id() != now.id() || !gs.is_registered(*now) {
-        gs.register(new).map_err(|_| format!("{label} 도 다른 프로그램이 쓰고 있어요. 다른 조합을 눌러 보세요"))?;
-        if new.id() != now.id() {
-            let _ = gs.unregister(*now); // 못 잡고 있던 키면 놓을 것도 없다
-        }
+    if new.id() != now.id() {
+        let _ = gs.unregister(*now); // 못 잡고 있던 키면 놓을 것도 없다
     }
+    // 전역 단축키는 관리자 권한 창이 앞에 있을 때를 위한 것 — 다른 프로그램이 이미 쓰고 있어도 훅이 연다
+    let registered = gs.is_registered(new) || gs.register(new).is_ok();
+    keyhook::set_key(&new);
     *now = new;
     *hk.notice.lock().unwrap() = None;
     if let Some(dir) = hk.file.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
     let _ = std::fs::write(&hk.file, new.to_string()); // 기억 못 해도 지금은 된다
-    show_key(&app, &new, true);
-    Ok(label)
+    show_key(&app, &new, hk.hooked || registered);
+    Ok(key_label(&new))
 }
 
 /// 창에서 캡슐을 눌렀을 때 — 알림 영역 메뉴의 체크도 맞춘다
@@ -726,8 +758,10 @@ fn main() {
                 .ok()
                 .and_then(|s| s.trim().parse().ok())
                 .or_else(|| memo::magic_key(&memoking)?.parse().ok())
-                .unwrap_or(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space));
-            app.manage(Hotkey { now: Mutex::new(hotkey), file, notice: Mutex::default() });
+                .filter(|s| keyhook::check(s).0.is_none())
+                .unwrap_or_else(default_key);
+            let hooked = keyhook::start(app.handle().clone(), &hotkey);
+            app.manage(Hotkey { now: Mutex::new(hotkey), file, hooked, notice: Mutex::default() });
 
             // 알림 영역 ✦ — 왼쪽 클릭: 열기 · 오른쪽 클릭: 메뉴 (설정은 여기에만, 창은 깔끔하게)
             let open = MenuItem::with_id(app, "open", "열기", true, None::<&str>)?;
@@ -769,10 +803,7 @@ fn main() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(move |app, e| match e.id.as_ref() {
                     "open" => toggle(app),
-                    "hotkey" => {
-                        toggle(app);
-                        let _ = app.emit("magic:hotkey", ());
-                    }
+                    "hotkey" => open_hotkey(app),
                     "autostart" => {
                         let al = app.autolaunch();
                         let on = autostart.is_checked().unwrap_or(false); // 누르면 체크가 먼저 바뀌어 온다
@@ -808,30 +839,26 @@ fn main() {
                 })
                 .build(app)?;
 
-            // 메모킹 매직키처럼 다른 프로그램이 이미 쓰고 있으면: 창을 한 번 띄워 알리고, 거기서 바로 다른 키로 바꾸게 한다
-            let ok = app.global_shortcut().register(hotkey).is_ok();
-            show_key(app.handle(), &hotkey, ok);
-            if !ok {
-                let msg = format!(
-                    "{} 를 다른 프로그램이 쓰고 있어요 (메모킹은 창을 닫아도 알림 영역에 남아 이 키를 잡고 있어요). 여기를 눌러 다른 키로 바꾸세요",
-                    key_label(&hotkey)
-                );
-                *app.state::<Hotkey>().notice.lock().unwrap() = Some(msg);
-                // 메모킹이 있으면 곧 키를 넘긴다(0.77~) — 창을 띄우지 않고 기다린다. 옛 메모킹이면 2분 뒤에 알린다
-                if memo::knows_magickey(&memoking) || app.state::<Arc<Memos>>().exe.is_some() {
-                    retry_hotkey(app.handle().clone());
-                } else {
-                    toggle(app.handle());
-                }
+            // 키보드 훅이 먼저 본다 (다른 프로그램 · 입력기가 가로채지 못하게). 전역 단축키는 관리자 권한 창이 앞에 있을 때를 위한 것 —
+            //   둘 다 못 잡았을 때만 창을 띄워 알린다
+            let registered = app.global_shortcut().register(hotkey).is_ok();
+            show_key(app.handle(), &hotkey, hooked || registered);
+            if !hooked && !registered {
+                *app.state::<Hotkey>().notice.lock().unwrap() = Some(format!("{} 를 다른 프로그램이 쓰고 있어요. 여기를 눌러 다른 키로 바꾸세요", key_label(&hotkey)));
+                toggle(app.handle());
             }
             Ok(())
         })
         .on_window_event(|w, e| {
-            if let (WindowEvent::Focused(false), "main") = (e, w.label()) {
-                let _ = w.hide(); // 다른 곳을 누르면 숨는다 (업데이트 창은 그대로)
+            match (e, w.label()) {
+                (WindowEvent::Focused(false), "main") => {
+                    let _ = w.hide(); // 다른 곳을 누르면 숨는다 (업데이트 · 단축키 창은 그대로)
+                }
+                (WindowEvent::Focused(false) | WindowEvent::Destroyed, "hotkey") => keyhook::record(None), // 키 고르기는 이 창이 앞에 있을 때만
+                _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, hotkey_open, hotkey_state, hotkey_record, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }
