@@ -110,11 +110,13 @@ struct State {
     held: Option<(u16, u32)>,
     /// 고르는 동안 마지막으로 보낸 조합키 (같으면 다시 보내지 않는다)
     sent: Option<Modifiers>,
-    /// 한국어 자판의 오른쪽 Alt(한/영) · 오른쪽 Ctrl(한자)을 누르고 있나 — 훅이 본 누름 · 뗌으로 (아래 win::korean)
-    right: Modifiers,
+    /// 한/영 · 한자 키를 누른 때(ms, 떼면 None) — 아래 win::korean
+    kor: [Option<u32>; 2],
+    /// 삼킨 한/영 · 한자 키 (뗄 때도 삼킨다)
+    kor_eaten: Modifiers,
 }
 
-static STATE: Mutex<State> = Mutex::new(State { key: None, recording: None, held: None, sent: None, right: Modifiers::empty() });
+static STATE: Mutex<State> = Mutex::new(State { key: None, recording: None, held: None, sent: None, kor: [None; 2], kor_eaten: Modifiers::empty() });
 static APP: OnceLock<AppHandle> = OnceLock::new();
 /// 훅이 마지막으로 창을 연 때
 static FIRED: Mutex<Option<Instant>> = Mutex::new(None);
@@ -182,15 +184,30 @@ mod win {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-    // 한국어 자판은 오른쪽 Alt 가 한/영(VK_HANGUL), 오른쪽 Ctrl 이 한자(VK_HANJA) 키다 — 그대로 두면 오른쪽 Alt 로 누른
-    //   Ctrl+Alt+Space 가 Windows 에는 Ctrl+Space 로 가서 그 키를 쓰는 기능이 열렸다. 여기서는 Alt · Ctrl 로 본다.
-    //   따로 있는 한/영 · 한자 키는 떼는 신호가 없어(눌린 채로 남아) 빼고, 자리가 오른쪽 Alt · Ctrl(스캔 코드 + 확장 키)인 것만
-    fn korean(vk: u16, scan: u32, extended: bool) -> Option<Modifiers> {
-        match (vk, scan, extended) {
-            (VK_HANGUL, 0x38, true) => Some(Modifiers::ALT),
-            (VK_HANJA, 0x1D, true) => Some(Modifiers::CONTROL),
+    // 한국어 자판은 스페이스 오른쪽, Alt 자리에 한/영(VK_HANGUL) · Ctrl 자리에 한자(VK_HANJA) 키가 있다 — 그대로 두면
+    //   Ctrl + 한/영 + Space 가 Windows 에는 Ctrl+Space 로 가서 그 키를 쓰는 기능이 열렸다. 여기서는 Alt · Ctrl 로 본다.
+    //   이 키들은 떼는 신호가 없을 때가 많아(눌린 채로 남음), 누른 뒤 1초 안에만 누르고 있는 것으로 친다
+    const KOR_HOLD_MS: u32 = 1000;
+
+    /// 한/영 → Alt, 한자 → Ctrl (kor 칸 번호와 함께)
+    fn korean(vk: u16) -> Option<(usize, Modifiers)> {
+        match vk {
+            VK_HANGUL => Some((0, Modifiers::ALT)),
+            VK_HANJA => Some((1, Modifiers::CONTROL)),
             _ => None,
         }
+    }
+
+    /// 지금 누르고 있는 것으로 치는 한/영 · 한자 — 삼킨 것만 (단축키의 다른 조합키와 함께 눌렀거나 고르는 중).
+    ///   그냥 한/영을 누르고 Space 를 치는 글쓰기가 Alt+Space 로 잡히지 않게
+    fn kor_mods(st: &State, at: u32) -> Modifiers {
+        let mut m = Modifiers::empty();
+        for (i, mm) in [(0, Modifiers::ALT), (1, Modifiers::CONTROL)] {
+            if st.kor_eaten.contains(mm) && st.kor[i].is_some_and(|t| at.wrapping_sub(t) < KOR_HOLD_MS) {
+                m |= mm;
+            }
+        }
+        m
     }
 
     fn is_mod(vk: u16) -> bool {
@@ -206,10 +223,10 @@ mod win {
         }
     }
 
-    /// 지금 눌려 있는 조합키 (훅 안에서는 이번 키는 아직 반영 전) — right: 오른쪽 한/영 · 한자
-    fn mods_now(right: Modifiers) -> Modifiers {
+    /// 지금 눌려 있는 조합키 (훅 안에서는 이번 키는 아직 반영 전) — kor: 한/영 · 한자 (kor_mods)
+    fn mods_now(kor: Modifiers) -> Modifiers {
         let down = |vk: u16| unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0;
-        let mut m = right;
+        let mut m = kor;
         if down(VK_CONTROL) {
             m |= Modifiers::CONTROL;
         }
@@ -242,26 +259,38 @@ mod win {
     }
 
     /// true 면 삼킨다 (다른 프로그램에 가지 않음)
-    fn handle(msg: u32, vk: u16, scan: u32, extended: bool, at: u32) -> bool {
+    fn handle(msg: u32, vk: u16, at: u32) -> bool {
         let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
         let mut st = STATE.lock().unwrap();
         let recording = st.recording.is_some_and(|h| unsafe { GetForegroundWindow() } as isize == h);
-        let korean = korean(vk, scan, extended);
-        if let Some(m) = korean {
-            st.right.set(m, down);
+        let korean = korean(vk);
+        let mut eat = false;
+        if let Some((i, m)) = korean {
+            if down {
+                // 단축키의 다른 조합키를 이미 누르고 있으면(Ctrl + 한/영) 삼킨다 — 한/영이 바뀌지 않게. 고르는 동안은 늘 삼킨다
+                let need = st.key.map_or(Modifiers::empty(), |(k, _)| k);
+                eat = recording || (need.contains(m) && mods_now(Modifiers::empty()).intersects(need - m));
+                st.kor[i] = Some(at);
+                st.kor_eaten.set(m, eat);
+            } else {
+                st.kor[i] = None;
+                eat = st.kor_eaten.contains(m);
+                st.kor_eaten.remove(m);
+            }
         }
         if korean.is_some() || is_mod(vk) {
             if recording {
                 // 누르고 있는 조합키를 글쇠로 바로 보인다 (훅 안에서는 이번 키가 아직 반영 전이라 직접 더하고 뺀다)
-                let this = korean.unwrap_or_else(|| mod_of(vk));
-                let m = if down { mods_now(st.right) | this } else { mods_now(st.right) - this };
+                let this = korean.map_or_else(|| mod_of(vk), |(_, m)| m);
+                let base = mods_now(kor_mods(&st, at));
+                let m = if down { base | this } else { base - this };
                 if st.sent != Some(m) && st.held.is_none() {
                     st.sent = Some(m);
                     drop(st);
                     emit(Pressed { parts: parts(m, None), key: None, problem: None, warn: None });
                 }
             }
-            return false; // 조합키는 그대로 보낸다 (눌린 채로 남지 않게)
+            return eat; // 조합키는 그대로 보낸다 (눌린 채로 남지 않게) — 한/영 · 한자는 위에서 정한 대로
         }
         let held = st.held.is_some_and(|(k, t)| k == vk && at.wrapping_sub(t) < 1000);
         if !down {
@@ -274,7 +303,7 @@ mod win {
             st.held = Some((vk, at)); // 꾹 눌러 반복
             return true;
         }
-        let mods = mods_now(st.right);
+        let mods = mods_now(kor_mods(&st, at));
         if recording {
             st.held = Some((vk, at));
             st.sent = None;
@@ -295,6 +324,8 @@ mod win {
         }
         if st.key == Some((mods, vk)) {
             st.held = Some((vk, at));
+            st.kor = [None; 2]; // 한/영은 떼는 신호가 없을 수 있다 — 한 번 쓰면 잊는다
+            st.kor_eaten = Modifiers::empty();
             drop(st);
             mask(mods);
             *FIRED.lock().unwrap() = Some(Instant::now());
@@ -311,7 +342,7 @@ mod win {
         if code == HC_ACTION as i32 {
             let k = &*(l as *const KBDLLHOOKSTRUCT);
             // 보낸 키(SendInput — 우리 0xE8 · 창 띄울 때의 Alt 포함)는 보지 않는다
-            if k.flags & LLKHF_INJECTED == 0 && handle(w as u32, k.vkCode as u16, k.scanCode, k.flags & LLKHF_EXTENDED != 0, k.time) {
+            if k.flags & LLKHF_INJECTED == 0 && handle(w as u32, k.vkCode as u16, k.time) {
                 return 1;
             }
         }

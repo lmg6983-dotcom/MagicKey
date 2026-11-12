@@ -1,6 +1,7 @@
 // 단축키 창 — 알림 영역 메뉴 '단축키 바꾸기' · 매직키 창의 안내에서 연다 (main.rs open_hotkey)
 //   열면 바로 기록: 누르는 조합키가 글쇠로 바로 보이고, 키까지 누르면 쓸 수 있는지 알려 준다 → 저장.
-//   키는 매직키의 키보드 훅이 받아 넘긴다 (keyhook.rs) — 다른 프로그램이 쓰는 Ctrl+Space · Win+… 도 여기서는 고를 수 있다
+//   키는 매직키의 키보드 훅이 받아 넘긴다 (keyhook.rs) — 다른 프로그램이 쓰는 Ctrl+Space · Win+… 도 여기서는 고를 수 있다.
+//   훅이 못 받은 키는 이 창이 직접 받는다 (아래 keydown)
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
@@ -8,7 +9,7 @@ const win = getCurrentWindow();
 const $ = (id) => document.getElementById(id);
 const ui = { field: $('hk-field'), keys: $('hk-keys'), prompt: $('hk-prompt'), status: $('hk-status'), chips: $('hk-chips'), reset: $('hk-reset'), cancel: $('hk-cancel'), save: $('hk-save') };
 
-let info = { now: { parts: [], key: '' }, suggest: [] };
+let info = { now: { parts: [], key: '' }, suggest: [], hooked: true };
 let cand = null; // 고른 새 키 { parts, key, problem, warn }
 let live = null; // 기록 중 누르고 있는 조합키 ['Ctrl', 'Alt']
 let rec = false;
@@ -46,6 +47,7 @@ function render() {
   else if (cand?.problem) [cls, text] = ['err', cand.problem];
   else if (cand?.warn && !same(cand, info.now)) [cls, text] = ['warn', cand.warn];
   else if (changed) [cls, text] = ['ok', `✓ 쓸 수 있어요 — 저장하면 ${cand.parts.join('+')} 로 열어요`];
+  else if (rec && !info.hooked) [cls, text] = ['warn', '키보드 훅을 쓰지 못해 다른 프로그램이 먼저 쓰는 키는 고를 수 없어요'];
   else if (rec) text = 'Ctrl · Alt · Win 중 하나와 함께 누르세요 (예: Ctrl+Alt+Space)';
   else text = `지금은 ${info.now.parts.join('+')} 로 열어요`;
   ui.status.className = `hk-status${cls ? ` ${cls}` : ''}`;
@@ -79,9 +81,21 @@ function pick(next) {
     ui.field.classList.add('bad');
   } else {
     record(false);
-    ui.save.focus();
+    document.activeElement?.blur(); // 단추에 초점이 있으면 다음 Space 가 그 단추를 누른다 — 저장은 Enter 나 단추로
   }
   render();
+}
+
+// 고른 키 하나 (훅이 넘겼거나 이 창이 받은 것) — Esc 는 그만, Backspace 는 다시
+function take(p) {
+  live = null;
+  const alone = p.parts.length === 1;
+  if (alone && p.parts[0] === 'Esc') return record(false);
+  if (alone && p.parts[0] === 'Backspace') {
+    cand = null;
+    return render();
+  }
+  pick(p);
 }
 
 listen('hotkey:pressed', ({ payload: p }) => {
@@ -91,14 +105,7 @@ listen('hotkey:pressed', ({ payload: p }) => {
     render();
     return;
   }
-  live = null;
-  const alone = p.parts.length === 1;
-  if (alone && p.parts[0] === 'Esc') return record(false);
-  if (alone && p.parts[0] === 'Backspace') { // 고른 것을 지우고 다시
-    cand = null;
-    return render();
-  }
-  pick(p);
+  take(p);
 });
 
 ui.field.addEventListener('click', () => {
@@ -127,9 +134,28 @@ ui.save.addEventListener('click', async () => {
     render();
   }
 });
-addEventListener('keydown', (e) => { // 기록 중이 아닐 때 (기록 중의 키는 훅이 받아 여기 오지 않는다)
-  if (e.key === 'Escape') ui.cancel.click();
-});
+// 기록 중: 훅이 받은 키는 여기 오지 않는다. 그래도 오는 키(훅을 못 걸었을 때)는 여기서 받고, 단추를 누르지 않게 막는다
+const MODS = [['ctrlKey', 'ctrl', 'Ctrl'], ['altKey', 'alt', 'Alt'], ['shiftKey', 'shift', 'Shift'], ['metaKey', 'super', 'Win']];
+addEventListener('keydown', (e) => {
+  if (!rec) {
+    if (e.key === 'Escape') ui.cancel.click();
+    else if (e.key === 'Enter' && !ui.save.disabled && !e.target.closest?.('button')) ui.save.click();
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.isComposing || e.repeat) return;
+  const held = MODS.filter(([k]) => e[k]);
+  if (/^(Control|Alt|Shift|Meta|OS)(Left|Right)?$/.test(e.code) || !e.code) { // 조합키만
+    live = held.length ? held.map(([, , name]) => name) : null;
+    return render();
+  }
+  if (e.code === 'Escape' && !held.length) return take({ parts: ['Esc'] });
+  if (e.code === 'Backspace' && !held.length) return take({ parts: ['Backspace'] });
+  invoke('hotkey_info', { key: [...held.map(([, k]) => k), e.code].join('+') })
+    .then((p) => take(p), (err) => take({ parts: [...held.map(([, , n]) => n), e.code], key: null, problem: String(err) }));
+}, true);
+addEventListener('keyup', (e) => rec && e.preventDefault(), true);
 // 다른 창을 눌렀다 돌아오면 기록을 이어서 (창이 앞에 없으면 main.rs 가 기록을 멈춘다 — 다른 곳의 키를 가로채지 않게)
 addEventListener('focus', () => rec && invoke('hotkey_record', { on: true }).catch(() => {}));
 
