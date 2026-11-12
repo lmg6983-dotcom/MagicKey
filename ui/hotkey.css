@@ -1,0 +1,63 @@
+/* 단축키 창 (hotkey.html) — 창 틀 · 단추는 update.css, 색은 magic.css 의 토큰 */
+.hk-sub { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+
+/* 키 받는 칸: 누르면 기록 — 기록하는 동안 노란 테두리가 숨 쉰다 */
+.hk-field {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  min-height: 112px; padding: 18px 16px 14px; border: 1.5px solid var(--line); border-radius: 14px;
+  background: var(--fill-tab); color: var(--text); font: inherit; cursor: pointer;
+  transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out, background-color 0.15s ease-out;
+}
+.hk-field:hover { border-color: color-mix(in srgb, var(--text) 25%, transparent); }
+.hk-field:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.hk-field.rec { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 7%, var(--surface)); animation: hk-breathe 1.6s ease-in-out infinite; }
+.hk-field.bad { border-color: var(--err-text); animation: hk-shake 0.28s ease-out; }
+@keyframes hk-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 0%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 28%, transparent); }
+}
+@keyframes hk-shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+.hk-keys { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 7px; min-height: 40px; }
+/* 글쇠 — 아래 두꺼운 테두리로 눌리는 키 모양 */
+.hk-keys kbd {
+  display: inline-grid; place-items: center; min-width: 40px; height: 38px; padding: 0 12px; box-sizing: border-box;
+  border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 9px; background: var(--surface);
+  font: inherit; font-size: 15px; font-weight: 700; line-height: 1;
+  animation: hk-pop 0.14s ease-out;
+}
+.hk-keys kbd.wait { border-style: dashed; border-bottom-width: 1px; color: var(--muted); font-weight: 600; animation: none; }
+.hk-field.ok .hk-keys kbd:not(.wait) { border-color: color-mix(in srgb, var(--brand) 70%, var(--line)); }
+@keyframes hk-pop { from { transform: translateY(2px) scale(0.96); opacity: 0.4; } }
+
+.hk-prompt { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+.hk-field.rec .hk-prompt::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #e5484d; animation: hk-blink 1.2s steps(2, start) infinite; }
+@keyframes hk-blink { to { visibility: hidden; } }
+
+.hk-status { min-height: 20px; margin: 10px 2px 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.hk-status.ok { color: var(--ok-text); }
+.hk-status.warn { color: var(--text); }
+.hk-status.warn::before { content: "⚠ "; color: #c98a00; }
+.hk-status.err { color: var(--err-text); }
+
+.hk-suggest { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; }
+.hk-suggest-title { flex: none; line-height: 28px; color: var(--muted); font-size: 12px; font-weight: 700; } /* 칩이 두 줄이어도 첫 줄에 맞춘다 */
+.hk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hk-chip {
+  height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: transparent;
+  color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease-out;
+}
+.hk-chip:hover { background: var(--fill-tab); }
+.hk-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.hk-chip[aria-pressed="true"] { border-color: transparent; background: var(--sel); }
+.hk-chip small { margin-left: 4px; color: var(--muted); font-size: 11px; font-weight: 600; }
+
+.hk-actions { align-items: center; }
+.hk-reset { margin-right: auto; padding: 4px 2px; border: 0; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.hk-reset:hover:not(:disabled) { color: var(--text); text-decoration: underline; }
+.hk-reset:disabled { opacity: 0.45; cursor: default; }
+.hk-reset:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hk-field, .hk-field.rec, .hk-field.bad, .hk-keys kbd, .hk-field.rec .hk-prompt::before { animation: none; transition: none; }
+}

@@ -50,7 +50,6 @@ function slide(node, dx, dy, easing = EASE) {
 }
 
 let sites = { web: [], ai: [], notice: null, hotkey: '', memo: false, opms: false }; // notice: 단축키를 못 잡았을 때 안내
-let recording = false; // 새 단축키를 기다리는 중
 let res = null; // 마지막 query 결과
 // OPMS 저절로 찾기 (사건번호를 온전히 썼거나 찾아 본 번호와 같은 꼴) — 치기를 잠깐 멈추면 한 번만 묻는다
 let auto = { query: '', cases: [], total: 0, error: '', loading: false };
@@ -374,8 +373,7 @@ function render() {
   const section = (mod, label, count, sub) => add(mod, { section: [label, count, sub] });
   const note = (mod, text, onClick) => add(mod, { note: text, onClick });
   const put = (mod, r) => add(mod, { row: { mod, ...r } });
-  if (recording) note('top', `새 단축키를 누르세요 (Ctrl · Alt · Win 과 함께, 예: Ctrl+Shift+Space). 지금: ${sites.hotkey} · Esc 취소`);
-  else if (query && res) {
+  if (query && res) {
     if (res.newMemo) put('memo', { kind: 'new' }); // Enter 로 바로 저장
     if (res.remind) put('memo', { kind: 'remind' }); // 내일 3시 치과 → 그때 알림
     if (res.opms) {
@@ -414,7 +412,7 @@ function render() {
     if (isOn('web')) put('web', { kind: 'web', sites: sites.web });
     if (isOn('ai')) put('ai', { kind: 'ai', sites: sites.ai });
     if (![...groups.values()].some((g) => g.some((it) => it.row)) && !searched) note('rest', `'${query.slice(0, 30)}'와 맞는 결과가 없어요`);
-  } else if (sites.notice) note('top', sites.notice, () => record(true));
+  } else if (sites.notice) note('top', sites.notice, () => invoke('hotkey_open'));
 
   // 순서: 캡슐 순서 · 사이트 열기는 계산 바로 뒤 · 남은 건수와 '없어요' 안내는 웹 검색 바로 위 · 묻는 글이면 AI 를 사이트 다음으로
   const order = ['top', ...shownModules().map((m) => m.id)];
@@ -493,7 +491,7 @@ function keyHint() {
     parts.push(['↵', acts[activeAct]?.label ?? '']);
     if (acts.length > 1) parts.push(['← →', '단추']);
   }
-  parts.push(['Esc', recording ? '취소' : input.value ? '지우기' : '닫기']);
+  parts.push(['Esc', input.value ? '지우기' : '닫기']);
   if (rows.length > 1) parts.push(['↑↓', '고르기']);
   return parts;
 }
@@ -664,31 +662,7 @@ function dragWindow(e) {
 }
 document.querySelectorAll('[data-drag]').forEach((h) => h.addEventListener('pointerdown', dragWindow));
 
-// ---------- 단축키 바꾸기 ----------
-function record(on) {
-  recording = on;
-  render();
-  input.focus();
-}
-
-const MOD_KEYS = /^(Control|Alt|Shift|Meta|OS)(Left|Right)?$/;
-async function takeKey(e) {
-  e.preventDefault();
-  if (e.key === 'Escape') return record(false);
-  if (MOD_KEYS.test(e.code) || !e.code) return; // 조합키만 누른 동안은 기다린다
-  const mods = [e.ctrlKey && 'ctrl', e.altKey && 'alt', e.shiftKey && 'shift', e.metaKey && 'super'].filter(Boolean);
-  try {
-    sites.hotkey = await invoke('set_hotkey', { key: [...mods, e.code].join('+') });
-    sites.notice = null;
-    record(false);
-    flash(true, `이제 ${sites.hotkey} 로 열어요`);
-  } catch (err) {
-    flash(false, String(err));
-  }
-}
-
 input.addEventListener('keydown', (e) => {
-  if (recording) return takeKey(e);
   if (e.isComposing) return; // 한글 조합 중
   const r = rows[selected];
   const acts = r ? actionsFor(r) : [];
@@ -733,7 +707,6 @@ function onShow() {
       render();
     }
   }).catch(() => {});
-  recording = false;
   grow();
   flashUntil = 0;
   selected = 0;
@@ -751,5 +724,4 @@ function onShow() {
   invoke('sync_modules', { off: offList() }).catch(() => {});
   await listen('magic:module', (e) => setModule(...e.payload)); // 알림 영역 메뉴 '설정 › 기능'
   await listen('magic:show', onShow);
-  await listen('magic:hotkey', () => record(true)); // 알림 영역 메뉴의 '단축키 바꾸기'
 })();
