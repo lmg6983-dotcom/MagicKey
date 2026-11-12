@@ -559,7 +559,7 @@ fn hotkey_open(app: AppHandle) {
     open_hotkey(&app);
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct KeyInfo {
     parts: Vec<String>,
     key: String,
@@ -760,8 +760,12 @@ pub(crate) fn hotkey_pressed(app: &AppHandle) {
         }
         *last = Some(Instant::now());
     }
-    // 단축키 창이 앞에 있으면 열지 않는다 — 새 키를 고른 뒤 저장하기 전에 지금 키를 눌러도 매직키가 튀어나오지 않게
+    // 단축키 창이 앞에 있으면 열지 않는다 — 새 키를 고른 뒤 저장하기 전에 지금 키를 눌러도 매직키가 튀어나오지 않게.
+    //   대신 그 키를 단축키 창에 넘긴다: 지금 단축키는 전역 단축키(또는 기록 중이 아닌 훅)가 먼저 가져가 창에 닿지 않는다 —
+    //   넘기지 않으면 Ctrl · Alt 까지만 보이고 Space 가 안 눌린 것처럼 보였다 (기록 중일 때만 창이 받는다)
     if app.get_webview_window("hotkey").is_some_and(|h| is_front(&h)) {
+        let now = *app.state::<Hotkey>().now.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = app.emit_to("hotkey", "hotkey:pressed", KeyInfo::of(now));
         return;
     }
     toggle(app);

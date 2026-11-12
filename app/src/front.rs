@@ -6,13 +6,16 @@
 use windows_sys::Win32::{
     Foundation::HWND,
     System::Threading::{AttachThreadInput, GetCurrentThreadId},
-    UI::WindowsAndMessaging::{BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow},
+    UI::WindowsAndMessaging::{BringWindowToTop, GetAncestor, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow, GA_ROOT},
 };
 
 /// 이 창이 지금 맨 앞(키 입력을 받는 창)인가
 #[cfg(windows)]
 pub fn is_front(hwnd: isize) -> bool {
-    unsafe { GetForegroundWindow() as isize == hwnd }
+    unsafe {
+        let fg = GetForegroundWindow();
+        fg as isize == hwnd || (!fg.is_null() && GetAncestor(fg, GA_ROOT) as isize == hwnd) // 창 안의 창(웹뷰)이 앞이어도
+    }
 }
 
 /// 창을 맨 앞으로 — 됐으면 true. 창을 만든 스레드(메인)에서 부른다

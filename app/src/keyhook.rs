@@ -268,7 +268,11 @@ mod win {
     fn handle(msg: u32, vk: u16, at: u32) -> bool {
         let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
         let mut st = state();
-        let recording = st.recording.is_some_and(|h| unsafe { GetForegroundWindow() } as isize == h);
+        // 단축키 창이 앞에 있나 — 앞에 있는 것이 그 창 안의 창(웹뷰)이어도 맞게, 맨 위 창까지 올라가 본다
+        let recording = st.recording.is_some_and(|h| unsafe {
+            let fg = GetForegroundWindow();
+            fg as isize == h || (!fg.is_null() && GetAncestor(fg, GA_ROOT) as isize == h)
+        });
         let korean = korean(vk);
         let mut eat = false;
         if let Some((i, m)) = korean {
