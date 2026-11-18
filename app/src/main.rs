@@ -358,8 +358,10 @@ struct AllQuery {
 #[derive(Default)]
 struct Finder(Mutex<AllQuery>);
 
+// 창을 만드는 명령은 async 여야 한다: 동기 명령 안에서 만들면 Windows WebView2 가 멈춰
+//   흰 창만 뜨고 닫히지도 않는다 (tauri-apps/wry#583)
 #[tauri::command]
-fn open_all(app: AppHandle, text: String, mods: Vec<String>, f: State<Finder>) {
+async fn open_all(app: AppHandle, text: String, mods: Vec<String>, f: State<'_, Finder>) -> Result<(), String> {
     let q = AllQuery { text, mods };
     *f.0.lock().unwrap() = q.clone();
     if let Some(w) = app.get_webview_window("finder") {
@@ -367,14 +369,16 @@ fn open_all(app: AppHandle, text: String, mods: Vec<String>, f: State<Finder>) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
-        return;
+        return Ok(());
     }
-    let _ = tauri::WebviewWindowBuilder::new(&app, "finder", tauri::WebviewUrl::App("finder.html".into()))
+    tauri::WebviewWindowBuilder::new(&app, "finder", tauri::WebviewUrl::App("finder.html".into()))
         .title("MagicKey 모두 찾기")
         .inner_size(920.0, 600.0)
         .min_inner_size(560.0, 320.0)
         .center()
-        .build();
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// 창이 처음 뜰 때 찾을 글
@@ -701,8 +705,9 @@ fn open_hotkey(app: &AppHandle) {
         .build();
 }
 
+// 창을 만드니 async (open_all 과 같은 까닭)
 #[tauri::command]
-fn hotkey_open(app: AppHandle) {
+async fn hotkey_open(app: AppHandle) {
     open_hotkey(&app);
 }
 
