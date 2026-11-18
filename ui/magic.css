@@ -64,6 +64,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 [data-mod="calc"] { --mod: #2f9e44; }
 [data-mod="web"], [data-mod="site"] { --mod: #d6336c; }
 [data-mod="ai"] { --mod: #7048e8; }
+[data-mod="rest"] { --mod: #868e96; } /* "다른 n건 더 보기" */
 
 .magic-section { display: flex; align-items: center; gap: 6px; padding: 7px 10px 3px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.03em; }
 .magic-section::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mod); }

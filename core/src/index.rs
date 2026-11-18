@@ -105,6 +105,11 @@ pub struct Found {
 
 /// 넓이 우선으로 (얕은 곳부터) 훑는다 — 링크는 따라가지 않는다
 pub fn crawl(roots: &[Root], max: usize) -> Vec<Entry> {
+    walk(roots, max, u16::MAX)
+}
+
+/// crawl 과 같되 levels 단계 아래까지만 (0 = 바로 아래)
+fn walk(roots: &[Root], max: usize, levels: u16) -> Vec<Entry> {
     let mut entries = Vec::new();
     let mut seen = HashSet::new();
     for root in roots {
@@ -130,7 +135,7 @@ pub fn crawl(roots: &[Root], max: usize) -> Vec<Entry> {
                     continue;
                 }
                 let path = ent.path();
-                if ft.is_dir() {
+                if ft.is_dir() && depth < levels {
                     queue.push_back((path.clone(), depth + 1));
                 }
                 entries.push(Entry::new(path, ft.is_dir(), root.app && ft.is_file(), depth));
@@ -138,6 +143,32 @@ pub fn crawl(roots: &[Root], max: usize) -> Vec<Entry> {
         }
     }
     entries
+}
+
+/// 자주 바뀌는 폴더(바탕 화면 · 다운로드 · 문서 …)만 levels 단계 아래까지 다시 훑어 목록을 맞춘다 —
+///   새로 생긴 것은 넣고, 훑은 범위에서 사라진 것은 뺀다. 전체를 다시 훑기(수십만 개, 몇 분마다)를 기다리지 않게.
+///   바뀐 것이 없으면 None
+pub fn refresh_shallow(entries: &[Entry], dirs: &[PathBuf], levels: u16) -> Option<Vec<Entry>> {
+    let roots: Vec<Root> = dirs.iter().filter(|d| d.is_dir()).map(|d| Root { dir: d.clone(), app: false }).collect();
+    if roots.is_empty() {
+        return None;
+    }
+    let key = |p: &str| p.to_lowercase();
+    let fresh = walk(&roots, MAX_ENTRIES, levels);
+    let now: HashSet<String> = fresh.iter().map(|e| key(e.path())).collect();
+    let sep = std::path::MAIN_SEPARATOR;
+    let bases: Vec<String> = roots.iter().map(|r| format!("{}{sep}", key(&r.dir.to_string_lossy()).trim_end_matches(sep))).collect();
+    // 훑은 범위 안(어느 폴더 아래, levels 단계까지)인데 지금은 없는 것
+    let gone = |e: &Entry| {
+        let p = key(e.path());
+        bases.iter().any(|b| p.strip_prefix(b.as_str()).is_some_and(|rel| rel.matches(sep).count() <= levels as usize)) && !now.contains(&p)
+    };
+    let before: HashSet<String> = entries.iter().map(|e| key(e.path())).collect();
+    let mut out: Vec<Entry> = entries.iter().filter(|e| !gone(e)).cloned().collect();
+    let removed = entries.len() - out.len();
+    // 새것은 사용자 폴더 바로 아래 폴더(바탕 화면 등) 안으로 친다 — 깊이는 찾기 순서에만 쓰인다
+    out.extend(fresh.into_iter().filter(|e| !before.contains(&key(e.path()))).map(|e| Entry { depth: e.depth + 1, ..e }));
+    (removed > 0 || out.len() > entries.len() - removed).then_some(out)
 }
 
 /// 저장: 한 줄에 "d|a|depth\t경로" (d = 폴더, a = 프로그램)
@@ -311,6 +342,25 @@ mod tests {
         let back = load(&file).unwrap();
         assert_eq!(back.len(), 3);
         assert!(back[0].is_dir && back[2].depth == 2);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn refresh_shallow_adds_new_and_drops_gone() {
+        let dir = std::env::temp_dir().join(format!("magickey-shallow-{}", std::process::id()));
+        let down = dir.join("Downloads");
+        fs::create_dir_all(down.join("사건/깊은/더깊은")).unwrap();
+        fs::write(down.join("옛날.pdf"), "").unwrap();
+        fs::write(down.join("사건/깊은/더깊은/아주깊은.txt"), "").unwrap();
+        let mut entries = crawl(&[Root { dir: dir.clone(), app: false }], 100);
+        entries.push(e(&down.join("사건/깊은/더깊은/지워짐.txt").to_string_lossy(), false, false, 4)); // levels 밖 — 손대지 않는다
+        assert!(refresh_shallow(&entries, std::slice::from_ref(&down), 2).is_none(), "바뀐 것이 없으면 None");
+        fs::remove_file(down.join("옛날.pdf")).unwrap();
+        fs::write(down.join("새 견적서.xlsx"), "").unwrap();
+        let out = refresh_shallow(&entries, std::slice::from_ref(&down), 2).unwrap();
+        let names: Vec<_> = out.iter().map(Entry::name).collect();
+        assert!(names.contains(&"새 견적서.xlsx") && !names.contains(&"옛날.pdf"), "{names:?}");
+        assert!(names.contains(&"아주깊은.txt") && names.contains(&"지워짐.txt"), "훑지 않은 깊이는 그대로");
         fs::remove_dir_all(dir).unwrap();
     }
 }
