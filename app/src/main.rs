@@ -26,6 +26,10 @@ mod front;
 mod keyhook;
 
 const STALE: Duration = Duration::from_secs(10 * 60); // 매직키를 열 때 이보다 오래된 목록이면 뒤에서 새로 만든다
+// 새 파일 · 지운 파일이 늦게 보이지 않게 (메모킹 Electron 매직키와 같은 간격):
+//   매직키를 열 때마다 자주 바뀌는 폴더만 얕게 다시 훑고(4초에 한 번까지), 파일 · 폴더가 하나도 안 찾아지면 전체도 다시 훑는다(2분에 한 번까지)
+const QUICK_GAP: Duration = Duration::from_secs(4);
+const MISS_GAP: Duration = Duration::from_secs(120);
 
 struct Index {
     entries: RwLock<Arc<Vec<Entry>>>,
@@ -34,10 +38,16 @@ struct Index {
     cache: PathBuf,
     /// 방금 보여 준 경로 — 창이 보낸 경로 중 이것만 열고 복사한다 (아무 경로나 열지 않게)
     shown: Mutex<HashSet<String>>,
+    /// 자주 바뀌는 폴더 (바탕 화면 · 다운로드 · 문서 · 메모 폴더) — 얕게 자주 다시 훑는다
+    hot: Vec<PathBuf>,
+    quick_at: Mutex<Option<Instant>>,
+    miss_at: Mutex<Option<Instant>>,
+    /// 목록이 바뀌면 매직키 창에 알린다 (magic:index — 쓴 글로 다시 찾는다)
+    app: AppHandle,
 }
 
 impl Index {
-    fn new(cache: PathBuf) -> Arc<Self> {
+    fn new(cache: PathBuf, hot: Vec<PathBuf>, app: AppHandle) -> Arc<Self> {
         let built = std::fs::metadata(&cache).and_then(|m| m.modified()).ok();
         let me = Arc::new(Index {
             entries: RwLock::default(),
@@ -45,6 +55,10 @@ impl Index {
             building: AtomicBool::new(false),
             cache,
             shown: Mutex::default(),
+            hot,
+            quick_at: Mutex::default(),
+            miss_at: Mutex::default(),
+            app,
         });
         let bg = me.clone();
         std::thread::spawn(move || {
@@ -69,8 +83,47 @@ impl Index {
             *me.entries.write().unwrap() = Arc::new(list);
             *me.built.lock().unwrap() = Some(SystemTime::now());
             me.building.store(false, Ordering::SeqCst);
+            let _ = me.app.emit_to("main", "magic:index", ());
         });
     }
+
+    /// 자주 바뀌는 폴더만 얕게 다시 훑어 새 파일은 넣고 지운 파일은 뺀다 (4초에 한 번까지)
+    fn quick(self: &Arc<Self>) {
+        let mut at = self.quick_at.lock().unwrap();
+        if at.is_some_and(|t| t.elapsed() < QUICK_GAP) {
+            return;
+        }
+        *at = Some(Instant::now());
+        let me = self.clone();
+        std::thread::spawn(move || {
+            let now = me.entries.read().unwrap().clone();
+            if let Some(list) = index::refresh_shallow(&now, &me.hot, 2) {
+                *me.entries.write().unwrap() = Arc::new(list);
+                let _ = me.app.emit_to("main", "magic:index", ());
+            }
+        });
+    }
+
+    /// 파일 · 폴더가 하나도 안 찾아질 때: 얕게 다시 훑고, 전체도 다시 (2분에 한 번까지)
+    fn missed(self: &Arc<Self>) {
+        self.quick();
+        let mut at = self.miss_at.lock().unwrap();
+        if at.is_some_and(|t| t.elapsed() < MISS_GAP) {
+            return;
+        }
+        *at = Some(Instant::now());
+        *self.built.lock().unwrap() = None;
+        self.touch();
+    }
+}
+
+/// 자주 바뀌는 폴더 — 사용자 폴더의 바탕 화면 · 다운로드 · 문서(전자포대 포함), 메모킹 메모 폴더
+fn hot_dirs(memo_root: Option<&PathBuf>) -> Vec<PathBuf> {
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from);
+    let mut dirs: Vec<PathBuf> = home.iter().flat_map(|h| ["Desktop", "Downloads", "Documents", r"OneDrive\Desktop", r"OneDrive\Documents"].map(|d| h.join(d))).collect();
+    dirs.extend(memo_root.cloned());
+    dirs.retain(|d| d.is_dir());
+    dirs
 }
 
 /// 메모킹 메모 — 메모킹이 이 PC 에 있을 때만 (메모 폴더는 읽기만, 열기는 메모킹에게)
@@ -265,7 +318,14 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
     notes.shown.lock().unwrap().extend(memos.iter().map(|m| m.id.clone()));
     let entries = idx.entries.read().unwrap().clone();
     let limits = (if on("apps") { 4 } else { 0 }, if on("files") { 3 } else { 0 }, if on("files") { 6 } else { 0 });
-    let found = index::search(&entries, &text, limits);
+    let mut found = index::search(&entries, &text, limits);
+    // 목록을 다시 훑기 전에 지운 것은 바로 뺀다 (보이는 몇 줄만 확인)
+    for list in [&mut found.apps, &mut found.folders, &mut found.files] {
+        list.retain(|h| std::path::Path::new(&h.path).exists());
+    }
+    if on("files") && found.folders.is_empty() && found.files.is_empty() && text.trim().chars().count() >= 2 {
+        idx.missed(); // 새로 생긴 것일 수 있다 — 다시 훑고 나면 magic:index 로 다시 찾는다
+    }
     // 더하기만 한다 (답이 순서가 바뀌어 와도 창에 보이는 줄은 늘 열 수 있게) — 창을 띄울 때 비운다
     idx.shown.lock().unwrap().extend(found.apps.iter().chain(&found.folders).chain(&found.files).map(|h| h.path.clone()));
     Ok(QueryOut {
@@ -282,6 +342,93 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
         indexed: entries.len(),
         building: idx.building.load(Ordering::SeqCst),
     })
+}
+
+// ---------- 모두 찾기 ----------
+//   매직키 창에서 "다른 n건 더 보기" 를 고르면 뜬다 (메모킹 Electron 매직키의 모두 찾기 창과 같은 것).
+//   찾은 것을 모두 한 줄씩 · 종류 탭 · 이름 · 경로 · 크기 · 고친 때로 줄 세우기 (finder.js)
+
+/// 모두 찾기 창에 넘길 글과 켜 둔 기능
+#[derive(Default, Clone, Serialize)]
+struct AllQuery {
+    text: String,
+    mods: Vec<String>,
+}
+
+#[derive(Default)]
+struct Finder(Mutex<AllQuery>);
+
+#[tauri::command]
+fn open_all(app: AppHandle, text: String, mods: Vec<String>, f: State<Finder>) {
+    let q = AllQuery { text, mods };
+    *f.0.lock().unwrap() = q.clone();
+    if let Some(w) = app.get_webview_window("finder") {
+        let _ = w.emit("finder:query", q);
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let _ = tauri::WebviewWindowBuilder::new(&app, "finder", tauri::WebviewUrl::App("finder.html".into()))
+        .title("MagicKey 모두 찾기")
+        .inner_size(920.0, 600.0)
+        .min_inner_size(560.0, 320.0)
+        .center()
+        .build();
+}
+
+/// 창이 처음 뜰 때 찾을 글
+#[tauri::command]
+fn finder_query(f: State<Finder>) -> AllQuery {
+    f.0.lock().unwrap().clone()
+}
+
+#[derive(Serialize)]
+struct AllOut {
+    memos: Vec<MemoHit>,
+    found: Found,
+    /// 맞는 것 전체 (많으면 비슷한 것부터 일부만 보낸다)
+    total: usize,
+    indexed: usize,
+    building: bool,
+}
+
+#[tauri::command]
+async fn search_all(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, notes: State<'_, Arc<Memos>>) -> Result<AllOut, String> {
+    let on = |m: &str| mods.iter().any(|x| x == m);
+    let text: String = text.chars().take(200).collect();
+    let (memos, memo_more) = memo::search(&notes.list.read().unwrap().clone(), &text, if on("notes") { 500 } else { 0 });
+    notes.shown.lock().unwrap().extend(memos.iter().map(|m| m.id.clone()));
+    let entries = idx.entries.read().unwrap().clone();
+    let files = on("files");
+    let found = index::search(&entries, &text, (if on("apps") { 300 } else { 0 }, if files { 1000 } else { 0 }, if files { 3000 } else { 0 }));
+    idx.shown.lock().unwrap().extend(found.apps.iter().chain(&found.folders).chain(&found.files).map(|h| h.path.clone()));
+    let total = memos.len() + memo_more + found.apps.len() + found.folders.len() + found.files.len() + found.more;
+    Ok(AllOut { memos, found, total, indexed: entries.len(), building: idx.building.load(Ordering::SeqCst) })
+}
+
+/// 크기 · 고친 때 (보이는 줄만 묻는다) — 찾은 경로만
+#[derive(Serialize)]
+struct Stat {
+    size: Option<u64>,
+    /// 1970 부터 ms
+    mtime: Option<u64>,
+}
+
+#[tauri::command]
+async fn file_stats(paths: Vec<String>, idx: State<'_, Arc<Index>>) -> Result<std::collections::HashMap<String, Stat>, String> {
+    let shown = idx.shown.lock().unwrap().clone();
+    Ok(paths
+        .into_iter()
+        .take(500)
+        .filter(|p| shown.contains(p))
+        .map(|p| {
+            let m = std::fs::metadata(&p).ok();
+            let mtime = m.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64);
+            let size = m.filter(|m| m.is_file()).map(|m| m.len());
+            (p, Stat { size, mtime })
+        })
+        .collect())
 }
 
 /// 여는 단축키 — 지금 키, 기억할 파일, 키보드 훅을 걸었는가, 못 잡았을 때 창에 띄울 안내
@@ -804,6 +951,7 @@ fn show_main(app: &AppHandle) {
     let idx = app.state::<Arc<Index>>();
     idx.shown.lock().unwrap().clear();
     idx.touch();
+    idx.quick();
     let notes = app.state::<Arc<Memos>>();
     notes.shown.lock().unwrap().clear();
     notes.touch();
@@ -828,8 +976,8 @@ fn main() {
         )
         .setup(|app| {
             let dir = app.path().app_local_data_dir()?;
-            app.manage(Index::new(dir.join("index.tsv")));
             let notes = Memos::find(app.handle());
+            app.manage(Index::new(dir.join("index.tsv"), hot_dirs(notes.root.as_ref()), app.handle().clone()));
             let has_memo = notes.root.is_some();
             app.manage(notes);
             let cfg = app.path().config_dir().ok();
@@ -871,6 +1019,7 @@ fn main() {
             let menu = Menu::with_items(app, &[&open, &sep()?, &settings, &sep()?, &quit])?;
             app.manage(TrayMenu { open, update, hotkey: hotkey_item, mods });
             app.manage(Updates::default());
+            app.manage(Finder::default());
             // 켜고 1분 뒤 · 그 뒤 6시간마다 조용히 확인 (로그인 직후 네트워크가 늦게 잡혀도 되게) — 새 버전이면 창을 띄운다 ('나중에' 한 버전은 빼고)
             let h = app.handle().clone();
             std::thread::spawn(move || {
@@ -942,7 +1091,7 @@ fn main() {
                 _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, hotkey_open, hotkey_state, hotkey_info, hotkey_record, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, hotkey_open, hotkey_state, hotkey_info, hotkey_record, open_all, finder_query, search_all, file_stats, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }

@@ -37,6 +37,8 @@ pub struct MemoHit {
     /// 찾은 말 둘레의 본문 한 줄 (없으면 빈 글)
     pub snippet: String,
     pub locked: bool,
+    /// 마지막으로 고친 때 (머리말 updated, 모두 찾기 창의 '고친 때')
+    pub updated: String,
 }
 
 /// 메모킹 설정(settings.json)의 메모 폴더 — 비어 있으면 None (그때 메모킹은 문서\메모킹 을 쓴다)
@@ -307,7 +309,7 @@ pub fn search(memos: &[Memo], query: &str, limit: usize) -> (Vec<MemoHit>, usize
     let out: Vec<MemoHit> = hits
         .into_iter()
         .take(limit)
-        .map(|(_, _, m, at)| MemoHit { id: m.id.clone(), title: m.title.clone(), snippet: at.map(|a| snippet_at(m, a)).unwrap_or_default(), locked: m.locked })
+        .map(|(_, _, m, at)| MemoHit { id: m.id.clone(), title: m.title.clone(), snippet: at.map(|a| snippet_at(m, a)).unwrap_or_default(), locked: m.locked, updated: m.updated.clone() })
         .collect();
     let more = total - out.len();
     (out, more)

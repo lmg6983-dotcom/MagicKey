@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>MagicKey 모두 찾기</title>
+  <link rel="stylesheet" href="magic.css" />
+  <link rel="stylesheet" href="finder.css" />
+</head>
+<body>
+  <!-- 모두 찾기: 매직키 창의 "다른 n건 더 보기" 로 연다 (메모킹 Electron 매직키와 같은 창) -->
+  <header class="finder-top">
+    <input id="finder-input" class="finder-input" type="search" placeholder="메모, 앱, 폴더, 파일 이름으로 찾기" aria-label="찾을 말"
+      aria-controls="finder-list" autocomplete="off" spellcheck="false" autofocus />
+    <div id="finder-tabs" class="finder-tabs" role="tablist" aria-label="종류">
+      <button type="button" role="tab" data-kind="all" aria-selected="true">모두 <span class="n"></span></button>
+      <button type="button" role="tab" data-kind="memo" aria-selected="false">메모 <span class="n"></span></button>
+      <button type="button" role="tab" data-kind="app" aria-selected="false">앱 <span class="n"></span></button>
+      <button type="button" role="tab" data-kind="folder" aria-selected="false">폴더 <span class="n"></span></button>
+      <button type="button" role="tab" data-kind="file" aria-selected="false">파일 <span class="n"></span></button>
+    </div>
+  </header>
+  <div class="finder-head" role="row">
+    <button type="button" class="col-name" data-sort="name">이름</button>
+    <button type="button" class="col-where" data-sort="where">경로</button>
+    <button type="button" class="col-size" data-sort="size">크기</button>
+    <button type="button" class="col-time" data-sort="time">고친 때</button>
+  </div>
+  <div id="finder-scroll" class="finder-scroll">
+    <div id="finder-list" class="finder-list" role="listbox" aria-label="찾은 것"></div>
+    <div id="finder-empty" class="finder-empty" hidden></div>
+  </div>
+  <footer class="finder-foot">
+    <span id="finder-count" class="finder-count"></span>
+    <span id="finder-status" class="finder-status"></span>
+  </footer>
+  <script src="common.js"></script>
+  <script src="finder.js"></script>
+</body>
+</html>
