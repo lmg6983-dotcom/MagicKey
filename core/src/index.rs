@@ -353,7 +353,8 @@ mod tests {
         fs::write(down.join("옛날.pdf"), "").unwrap();
         fs::write(down.join("사건/깊은/더깊은/아주깊은.txt"), "").unwrap();
         let mut entries = crawl(&[Root { dir: dir.clone(), app: false }], 100);
-        entries.push(e(&down.join("사건/깊은/더깊은/지워짐.txt").to_string_lossy(), false, false, 4)); // levels 밖 — 손대지 않는다
+        let deep = ["사건", "깊은", "더깊은", "지워짐.txt"].iter().fold(down.clone(), |p, c| p.join(c)); // 구분자는 OS 것으로 (Windows 는 \\)
+        entries.push(e(&deep.to_string_lossy(), false, false, 4)); // levels 밖 — 손대지 않는다
         assert!(refresh_shallow(&entries, std::slice::from_ref(&down), 2).is_none(), "바뀐 것이 없으면 None");
         fs::remove_file(down.join("옛날.pdf")).unwrap();
         fs::write(down.join("새 견적서.xlsx"), "").unwrap();
