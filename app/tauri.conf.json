@@ -11,6 +11,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "MagicKey",
         "width": 680,
         "height": 132,
@@ -53,7 +54,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE5NkMyMkMyNEM4RDI1OTgKUldTWUpZMU13aUpzcWFtbWp5VlArVVUydC80ckgrcTZaaVpoZnBTbFJaWnJvOVkwQno0L3VDZjIK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI4NjI1MkI1QzdBN0IyNTAKUldSUXNxZkh0VkppdUxQMlRtM09uZW9vU1FBMnhPbHY0MmR4dXB0a0lPZUc1N3N5SDRWejBtWVQK",
       "endpoints": [
         "https://github.com/lmg6983-dotcom/MagicKey/releases/latest/download/latest.json"
       ],

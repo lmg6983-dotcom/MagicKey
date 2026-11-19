@@ -24,6 +24,7 @@ use tauri_plugin_opener::OpenerExt;
 
 mod front;
 mod keyhook;
+mod webview;
 
 const STALE: Duration = Duration::from_secs(10 * 60); // 매직키를 열 때 이보다 오래된 목록이면 뒤에서 새로 만든다
 // 새 파일 · 지운 파일이 늦게 보이지 않게 (메모킹 Electron 매직키와 같은 간격):
@@ -371,7 +372,7 @@ async fn open_all(app: AppHandle, text: String, mods: Vec<String>, f: State<'_, 
         let _ = w.set_focus();
         return Ok(());
     }
-    tauri::WebviewWindowBuilder::new(&app, "finder", tauri::WebviewUrl::App("finder.html".into()))
+    webview::window(&app, "finder", "finder.html")
         .title("MagicKey 모두 찾기")
         .inner_size(920.0, 600.0)
         .min_inner_size(560.0, 320.0)
@@ -568,7 +569,7 @@ fn open_update(app: &AppHandle) {
         let _ = w.set_focus();
         return;
     }
-    let _ = tauri::WebviewWindowBuilder::new(app, "update", tauri::WebviewUrl::App("update.html".into()))
+    let _ = webview::window(app, "update", "update.html")
         .title("MagicKey 업데이트")
         .inner_size(460.0, 172.0) // "확인 중" 화면 높이 — 뒤에 update.js fit 이 내용에 맞춘다
         .resizable(false)
@@ -695,7 +696,7 @@ fn open_hotkey(app: &AppHandle) {
         let _ = w.set_focus();
         return;
     }
-    let _ = tauri::WebviewWindowBuilder::new(app, "hotkey", tauri::WebviewUrl::App("hotkey.html".into()))
+    let _ = webview::window(app, "hotkey", "hotkey.html")
         .title("MagicKey 단축키")
         .inner_size(440.0, 360.0) // hotkey.js fit 이 내용에 맞춘다
         .resizable(false)
@@ -886,6 +887,7 @@ fn is_front(w: &tauri::WebviewWindow) -> bool {
 fn hide_main(w: &tauri::WebviewWindow) {
     ACTIVE.store(false, Ordering::SeqCst);
     let _ = w.hide();
+    webview::hidden(w); // 매직키는 거의 늘 숨어 있다 — 숨은 동안 메모리를 낮춘다
 }
 
 /// 매직키 창이 포커스를 얻었다 · 잃었다 — 정말 다른 창이 앞에 왔을 때만 숨긴다
@@ -937,6 +939,7 @@ fn toggle(app: &AppHandle) {
 fn show_main(app: &AppHandle) {
     let Some(w) = app.get_webview_window("main") else { return };
     ACTIVE.store(false, Ordering::SeqCst);
+    webview::showing(&w);
     let _ = w.show();
     #[cfg(windows)]
     {
@@ -980,6 +983,8 @@ fn main() {
                 .build(),
         )
         .setup(|app| {
+            // 매직키 창 (tauri.conf.json 의 main) — 다른 창과 같은 브라우저 인자로 여기서 만든다
+            webview::hidden(&webview::from_config(app.handle(), "main")?);
             let dir = app.path().app_local_data_dir()?;
             let notes = Memos::find(app.handle());
             app.manage(Index::new(dir.join("index.tsv"), hot_dirs(notes.root.as_ref()), app.handle().clone()));
