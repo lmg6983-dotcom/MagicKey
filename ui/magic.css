@@ -46,7 +46,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 
 .magic-top { display: flex; align-items: flex-start; gap: 12px; padding: 6px 16px 14px 20px; }
 .magic-icon { font-size: 21px; line-height: 1.45; color: var(--brand); -webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.3); cursor: grab; }
-.magic-input { flex: 1; min-width: 0; display: block; height: 29px; max-height: 174px; padding: 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; color: var(--text); font: inherit; font-size: 20px; line-height: 1.45; caret-color: #e0a800; }
+.magic-input { flex: 1; min-width: 0; display: block; height: 29px; max-height: 174px; padding: 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; color: var(--text); font: inherit; font-size: 22px; font-weight: 500; line-height: 1.45; caret-color: #e0a800; }
 .magic-input::placeholder { color: var(--muted); }
 .magic-clear { flex: none; width: 24px; height: 24px; margin-top: 2.5px; border: 0; border-radius: 50%; background: var(--fill-tab); color: var(--muted); font-size: 12px; cursor: pointer; }
 .magic-clear:hover { color: var(--text); }
@@ -56,7 +56,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-results { position: relative; list-style: none; margin: 0; padding: 0 12px 10px; max-height: 430px; overflow-y: auto; }
 .magic-results:not(:has(> :not(.magic-pill))) { display: none; }
 /* 고른 줄 표시 하나가 줄 사이를 미끄러져 따라간다 */
-.magic-pill { position: absolute; z-index: 1; top: 0; left: 12px; right: 12px; border-radius: 16px; background: var(--sel); mix-blend-mode: multiply; pointer-events: none; transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), height 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+.magic-pill { position: absolute; z-index: 1; top: 0; left: 12px; right: 12px; border-radius: 22px; background: var(--sel); mix-blend-mode: multiply; pointer-events: none; transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), height 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
 .magic-pill.instant { transition: none; }
 @media (prefers-color-scheme: dark) { .magic-pill { mix-blend-mode: screen; } } /* 어두운 카드 위에서는 곱하면 사라진다 — 밝게 겹친다 */
 
@@ -71,31 +71,31 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 [data-mod="ai"] { --mod: #7048e8; }
 [data-mod="rest"] { --mod: #868e96; } /* "다른 n건 더 보기" */
 
-.magic-section { display: flex; align-items: center; gap: 6px; padding: 10px 12px 4px; color: var(--muted); font-size: 12.5px; font-weight: 700; }
+.magic-section { display: flex; align-items: center; gap: 6px; padding: 14px 14px 6px; color: var(--muted); font-size: 13.5px; font-weight: 700; }
 .magic-section::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mod); }
 .magic-section.sub::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--mod); }
 .magic-section .count { padding: 0 6px; border-radius: 99px; background: var(--fill-tab); font-weight: 600; }
 
 /* 결과: One UI 설정처럼 묶음마다 흰 카드 하나 — 이어진 줄의 첫 줄 위 · 끝 줄 아래만 둥글게 */
-.magic-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 14px; background: var(--card); cursor: pointer; }
-.magic-row:not(.magic-row + .magic-row) { border-top-left-radius: 18px; border-top-right-radius: 18px; }
-.magic-row:not(:has(+ .magic-row)) { border-bottom-left-radius: 18px; border-bottom-right-radius: 18px; }
-.magic-row + .magic-row::before { content: ""; position: absolute; top: 0; left: 56px; right: 14px; height: 1px; background: var(--sep); } /* 줄 사이 가는 선 (아이콘 뒤부터) */
+.magic-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 9px 16px; gap: 14px; background: var(--card); cursor: pointer; }
+.magic-row:not(.magic-row + .magic-row) { border-top-left-radius: 22px; border-top-right-radius: 22px; }
+.magic-row:not(:has(+ .magic-row)) { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
+.magic-row + .magic-row::before { content: ""; position: absolute; top: 0; left: 64px; right: 16px; height: 1px; background: var(--sep); } /* 줄 사이 가는 선 (아이콘 뒤부터) */
 .magic-row[aria-selected="true"]::before, .magic-row[aria-selected="true"] + .magic-row::before { opacity: 0; }
-.magic-row .ico { flex: none; width: 30px; height: 30px; display: grid; place-items: center; font-size: 15px; font-weight: 800; border-radius: 10px; } /* 모든 줄: 기능 색 칸 + 선 그림 (이모지와 섞여 어수선하던 것) */
+.magic-row .ico { flex: none; width: 34px; height: 34px; display: grid; place-items: center; font-size: 16px; font-weight: 800; border-radius: 12px; } /* 모든 줄: 기능 색 칸 + 선 그림 (이모지와 섞여 어수선하던 것) */
 .magic-row .ico { background: color-mix(in srgb, var(--mod) 15%, transparent); color: color-mix(in srgb, var(--mod) 78%, #000); }
 @media (prefers-color-scheme: dark) { .magic-row .ico { background: color-mix(in srgb, var(--mod) 26%, transparent); color: color-mix(in srgb, var(--mod) 55%, #fff); } } /* 어두운 바탕에서 묻히지 않게 */
-.magic-row .ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.magic-row .ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .magic-row .txt { min-width: 0; flex: 1; }
-.magic-row .t { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.magic-row .s { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.magic-row .t { font-size: 15.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.magic-row .s { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .magic-row .s:empty { display: none; }
 .magic-row b { font-weight: 800; background: rgba(255, 205, 0, 0.38); border-radius: 3px; padding: 0 1px; }
 .magic-row[aria-selected="true"] b { background: transparent; box-shadow: inset 0 -2px 0 #e0a800; border-radius: 0; }
 .magic-row .side { flex: none; color: var(--muted); font-size: 12px; }
 .magic-row[aria-selected="true"] .side { display: none; }
 .magic-row .acts { position: relative; z-index: 2; } /* 할 일 단추는 고른 줄 표시 위로 */
-.magic-row:is(.kind-calc, .kind-date) .t { font-size: 18px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.magic-row:is(.kind-calc, .kind-date) .t { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; }
 .magic-note { padding: 8px 12px 10px; color: var(--muted); font-size: 12.5px; list-style: none; }
 
 /* 찾는 중 — 돋보기가 이리저리 살피고 점 세 개가 차례로 (움직임 줄이기면 숨 쉬듯) */
