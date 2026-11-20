@@ -45,6 +45,8 @@ body {
 .frow .ico { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: color-mix(in srgb, var(--mod) 15%, transparent); color: color-mix(in srgb, var(--mod) 78%, #000); }
 @media (prefers-color-scheme: dark) { .frow .ico { background: color-mix(in srgb, var(--mod) 26%, transparent); color: color-mix(in srgb, var(--mod) 55%, #fff); } }
 .frow .ico svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.frow .ico.real { background: none; border-radius: 0; }
+.frow .ico.real img { width: 22px; height: 22px; object-fit: contain; }
 .frow b { font-weight: 800; background: color-mix(in srgb, var(--brand) 38%, transparent); border-radius: 3px; padding: 0 1px; }
 .frow .col-where, .frow .col-size, .frow .col-time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .finder-empty { margin: 40px 0; color: var(--muted); text-align: center; }

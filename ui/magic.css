@@ -106,6 +106,9 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-row .ico { flex: none; width: 30px; height: 30px; display: grid; place-items: center; font-size: 15px; font-weight: 800; border-radius: 10px; } /* 모든 줄: 기능 색 칸 + 선 그림 (이모지와 섞여 어수선하던 것) */
 .magic-row .ico { background: color-mix(in srgb, var(--mod) 15%, transparent); color: color-mix(in srgb, var(--mod) 78%, #000); }
 @media (prefers-color-scheme: dark) { .magic-row .ico { background: color-mix(in srgb, var(--mod) 26%, transparent); color: color-mix(in srgb, var(--mod) 55%, #fff); } } /* 어두운 바탕에서 묻히지 않게 */
+/* 실제 앱 · 파일 아이콘: 색 칸 없이 그림만 칸 크기로 (탐색기 · 시작 메뉴처럼) */
+.magic-row .ico.real { background: none; border-radius: 0; }
+.magic-row .ico.real img { width: 28px; height: 28px; object-fit: contain; }
 .magic-row .ico svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .magic-row .txt { min-width: 0; flex: 1; }
 .magic-row .t { font-size: 15px; line-height: 19px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

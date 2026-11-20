@@ -223,7 +223,8 @@ function row(r, index, query) {
     t.textContent = r.kind === 'web' ? '웹에서 찾기' : 'AI에게 묻기';
     s.textContent = r.sites.map(siteLabel).join(', ');
   } else {
-    ico.append(svg(r.kind));
+    if (r.kind === 'app' || r.kind === 'file' || r.kind === 'folder') realIcon(ico, r.kind, r.path); // 실제 아이콘 (못 얻으면 선 그림)
+    else ico.append(svg(r.kind));
     t.append(highlighted(r.name, query));
     s.textContent = r.path;
     s.title = r.path;

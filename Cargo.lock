@@ -2375,6 +2375,7 @@ dependencies = [
  "magickey-core",
  "magicsystem-core",
  "memoking-core",
+ "png",
  "serde",
  "serde_json",
  "tauri",
