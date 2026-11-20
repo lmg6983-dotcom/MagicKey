@@ -2368,7 +2368,7 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "magickey"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "arboard",
  "chrono",
@@ -2393,7 +2393,7 @@ dependencies = [
 
 [[package]]
 name = "magickey-core"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "chrono",
  "fancy-regex 0.14.0",
