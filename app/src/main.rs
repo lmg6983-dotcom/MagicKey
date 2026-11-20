@@ -163,7 +163,9 @@ impl Memos {
             .and_then(memo::vault_from_settings)
             .or_else(|| p.document_dir().ok().map(|d| d.join("메모킹")))
             .filter(|r| r.is_dir());
-        let exe = p.local_data_dir().ok().map(|d| d.join("Programs").join("memoking").join("MemoKing.exe")).filter(|e| e.is_file());
+        // 메모킹 1.0~ (Rust · Tauri 사용자별 설치: %LOCALAPPDATA%\MemoKing), 없으면 예전 Electron 판 (%LOCALAPPDATA%\Programs\MemoKing)
+        //   예전에는 Electron 자리만 봐서, 1.0 으로 넘어오며 그 폴더가 지워지자 새 메모 · 일정 추가 · 메모 열기가 모두 숨었다
+        let exe = p.local_data_dir().ok().and_then(|d| [d.join("MemoKing"), d.join("Programs").join("MemoKing")].into_iter().map(|dir| dir.join("MemoKing.exe")).find(|e| e.is_file()));
         let me = Arc::new(Memos { root, settings: file, can_make: AtomicBool::new(false), can_schedule: AtomicBool::new(false), exe, shelf: Mutex::default(), list: RwLock::default(), busy: AtomicBool::new(false), shown: Mutex::default() });
         me.touch();
         me
@@ -879,13 +881,25 @@ fn act(app: AppHandle, action: String, path: String, idx: State<Arc<Index>>) -> 
         "open" => app.opener().open_path(&path, None::<&str>).map(|_| String::new()).map_err(|e| err(&e)),
         "reveal" => app.opener().reveal_item_in_dir(&path).map(|_| String::new()).map_err(|e| err(&e)),
         "copyPath" => app.clipboard().write_text(path).map(|_| "경로를 복사했어요".into()).map_err(|e| err(&e)),
+        // 파일 · 폴더 그대로 (탐색기 · 바탕화면 · 메신저에 붙여 넣기 — Electron 매직키의 "파일 복사")
+        "copyFile" => {
+            // 클립보드 내용을 이 값이 살아 있는 동안 내어 주는 OS 가 있다 — 한 번 만들어 둔다
+            static CLIP: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
+            let mut clip = CLIP.lock().unwrap();
+            if clip.is_none() {
+                *clip = arboard::Clipboard::new().ok();
+            }
+            let folder = std::path::Path::new(&path).is_dir();
+            let ok = clip.as_mut().is_some_and(|c| c.set().file_list(&[PathBuf::from(&path)]).is_ok());
+            if ok { Ok(if folder { "폴더를 복사했어요".into() } else { "파일을 복사했어요".into() }) } else { Err("복사하지 못했어요".into()) }
+        }
         _ => Err("모르는 할 일이에요".into()),
     }
 }
 
 /// 찾은 파일 · 폴더를 끌어 놓기 시작 (탐색기 · 바탕화면으로 복사 — drag.rs). 찾은 결과의 경로만
 #[tauri::command]
-fn drag_out(app: AppHandle, path: String, idx: State<Arc<Index>>) -> Result<(), String> {
+fn drag_out(app: AppHandle, window: tauri::WebviewWindow, path: String, idx: State<Arc<Index>>) -> Result<(), String> {
     if !idx.shown.lock().unwrap().contains(&path) {
         return Err("찾은 결과가 아니에요".into());
     }
@@ -893,7 +907,11 @@ fn drag_out(app: AppHandle, path: String, idx: State<Arc<Index>>) -> Result<(), 
     if !p.exists() {
         return Err("파일이 없어졌어요".into());
     }
-    drag::start(&app, p);
+    #[cfg(windows)]
+    let hwnd = window.hwnd().map(|h| h.0 as isize).unwrap_or_default();
+    #[cfg(not(windows))]
+    let hwnd = { let _ = window; 0 };
+    drag::start(&app, hwnd, p);
     Ok(())
 }
 
