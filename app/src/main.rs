@@ -343,7 +343,7 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
         memos,
         new_memo,
         // 일정 캡슐을 켜 뒀고 메모킹이 알아들으면 (새 메모 캡슐과 따로 — 새 메모를 꺼도 일정은 된다)
-        schedule: (on("schedule") && notes.can_make.load(Ordering::SeqCst) && !date_calc && memo::mentions_date(&text)).then(|| schedule::preview(&text, chrono::Local::now())).flatten(),
+        schedule: (on("schedule") && notes.can_make.load(Ordering::SeqCst) && !date_calc).then(|| schedule::preview(&text, chrono::Local::now())).flatten(),
         opms: show_opms,
         opms_auto: show_opms && { let s = mo.settings(); !s.host.is_empty() && opms_search::auto_query(text.trim(), &s.shapes) },
         memo_more,

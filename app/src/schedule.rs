@@ -64,6 +64,9 @@ mod tests {
         assert_eq!(preview("12월 3일 회의", now).map(|p| p.label), Some("12월 3일 (목) 하루 종일".into()));
         assert!(preview("11월 23일부터 25일까지 출장", now).is_some_and(|p| p.label.contains(" ~ ")));
         assert_eq!(preview("장보기 목록", now), None, "날짜가 없으면 일정 줄 없음");
+        // 점으로 쓴 날짜도 (예전에는 미리 거르는 말 목록에 없어 일정 줄이 뜨지 않았다)
+        assert_eq!(preview("2026.12.12에 밥먹기", now), Some(Preview { label: "12월 12일 (토) 하루 종일".into(), title: "밥먹기".into() }));
+        assert_eq!(preview("2025.12.12에 밥먹기", now).map(|p| p.label), Some("2025년 12월 12일 (금) 하루 종일".into()), "지난 날도 (일정 탭 빠른 추가처럼)");
         assert_eq!(preview("내일 3시", now), None, "이름이 없으면 일정 줄 없음");
     }
 }
