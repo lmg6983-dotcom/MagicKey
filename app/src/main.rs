@@ -22,7 +22,9 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
+mod drag;
 mod front;
+mod schedule;
 mod keyhook;
 mod webview;
 
@@ -133,6 +135,8 @@ struct Memos {
     settings: Option<PathBuf>,
     /// 메모킹이 새 메모 만들기(`--new-memo-file=`)를 아는가 — 메모킹이 업데이트될 수 있어 열 때마다 다시 본다
     can_make: AtomicBool,
+    /// 메모킹이 "일정 추가"(--new-schedule-file)를 알아듣는가 — 옛 메모킹은 알림 맞춰 저장(메모 + 알림)으로 대신
+    can_schedule: AtomicBool,
     /// 메모킹 실행 파일 (없으면 메모 파일을 기본 앱으로 연다)
     exe: Option<PathBuf>,
     shelf: Mutex<Shelf>,
@@ -160,7 +164,7 @@ impl Memos {
             .or_else(|| p.document_dir().ok().map(|d| d.join("메모킹")))
             .filter(|r| r.is_dir());
         let exe = p.local_data_dir().ok().map(|d| d.join("Programs").join("memoking").join("MemoKing.exe")).filter(|e| e.is_file());
-        let me = Arc::new(Memos { root, settings: file, can_make: AtomicBool::new(false), exe, shelf: Mutex::default(), list: RwLock::default(), busy: AtomicBool::new(false), shown: Mutex::default() });
+        let me = Arc::new(Memos { root, settings: file, can_make: AtomicBool::new(false), can_schedule: AtomicBool::new(false), exe, shelf: Mutex::default(), list: RwLock::default(), busy: AtomicBool::new(false), shown: Mutex::default() });
         me.touch();
         me
     }
@@ -175,6 +179,7 @@ impl Memos {
         let Some(root) = self.root.clone() else { return };
         let json = self.settings_json();
         self.can_make.store(self.exe.is_some() && memo::knows_magickey(&json), Ordering::SeqCst);
+        self.can_schedule.store(self.exe.is_some() && memo::knows_schedule(&json), Ordering::SeqCst);
         if self.busy.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -286,8 +291,8 @@ struct QueryOut {
     /// '새 메모' 줄을 보여 줄까 (메모킹이 알아듣고, 기능을 켜 둠)
     #[serde(rename = "newMemo")]
     new_memo: bool,
-    /// '알림 맞춰 저장' 줄도 (첫 줄에 날짜 같은 말, 날짜 계산 글이 아님)
-    remind: bool,
+    /// '일정 추가' 줄 — 첫 줄을 메모킹 일정 탭과 같은 규칙으로 읽은 날짜 · 이름 (날짜 계산 글이 아님, schedule.rs)
+    schedule: Option<schedule::Preview>,
     /// 'OPMS 에서 찾기' 줄 (MagicSystem 이 있고, 사건번호 · 이름 · 초성 같은 글)
     opms: bool,
     /// 고르기 전에 저절로 찾을 글 (온전한 사건번호 · 찾아 본 번호와 같은 꼴, 서버 주소가 있음) → 창이 opms_auto 를 부른다
@@ -335,7 +340,7 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
         question: web::looks_like_question(&text),
         memos,
         new_memo,
-        remind: new_memo && !date_calc && memo::mentions_date(&text),
+        schedule: (new_memo && !date_calc && memo::mentions_date(&text)).then(|| schedule::preview(&text, chrono::Local::now())).flatten(),
         opms: show_opms,
         opms_auto: show_opms && { let s = mo.settings(); !s.host.is_empty() && opms_search::auto_query(text.trim(), &s.shapes) },
         memo_more,
@@ -803,11 +808,7 @@ fn new_memo(text: String, open: bool, remind: bool, notes: State<Arc<Memos>>) ->
     if text.is_empty() || text.len() > 1024 * 1024 {
         return Err("메모로 만들 글이 없어요".into());
     }
-    let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    // 메모킹(Node)과 같은 임시 폴더: TEMP 먼저 (Rust 의 temp_dir 은 TMP 먼저라, 둘이 다른 PC 에서 메모킹이 파일을 거절한다)
-    let tmp = std::env::var_os("TEMP").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-    let file = tmp.join(format!("magickey-{}-{nanos}.txt", std::process::id()));
-    std::fs::write(&file, text).map_err(|e| format!("글을 넘기지 못했어요: {e}"))?;
+    let file = hand_off(text)?;
     let mut cmd = std::process::Command::new(exe);
     cmd.arg(format!("--new-memo-file={}", file.display()));
     if open {
@@ -823,6 +824,50 @@ fn new_memo(text: String, open: bool, remind: bool, notes: State<Arc<Memos>>) ->
     Ok(if open { String::new() } else { "메모킹에 새 메모를 만들었어요".into() })
 }
 
+/// 메모킹에게 넘길 글을 임시 폴더의 magickey-*.txt 로 (메모킹(Node)과 같은 임시 폴더: TEMP 먼저 — Rust 의 temp_dir 은 TMP 먼저라, 둘이 다른 PC 에서 메모킹이 파일을 거절한다)
+fn hand_off(text: &str) -> Result<PathBuf, String> {
+    let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let tmp = std::env::var_os("TEMP").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let file = tmp.join(format!("magickey-{}-{nanos}.txt", std::process::id()));
+    std::fs::write(&file, text).map_err(|e| format!("글을 넘기지 못했어요: {e}"))?;
+    Ok(file)
+}
+
+/// "일정 추가" — 첫 줄을 메모킹에게 넘겨 일정 탭 빠른 추가와 같게 일정만 만든다 (메모킹이 Windows 알림으로 알린다)
+///   옛 메모킹(--new-schedule-file 을 모름)이면 알림 맞춰 저장 (메모 + 알림)으로 대신
+#[tauri::command]
+fn new_schedule(text: String, notes: State<Arc<Memos>>) -> Result<String, String> {
+    if !notes.can_schedule.load(Ordering::SeqCst) {
+        return new_memo(text, false, true, notes).map(|_| "메모킹에 알림 맞춘 메모를 만들었어요 (메모킹을 업데이트하면 일정만 만들어요)".into());
+    }
+    let Some(exe) = &notes.exe else { return Err("메모킹을 찾지 못했어요".into()) };
+    let line = text.lines().next().unwrap_or("").trim();
+    if line.is_empty() {
+        return Err("일정으로 만들 글이 없어요".into());
+    }
+    let file = hand_off(line)?;
+    std::process::Command::new(exe).arg(format!("--new-schedule-file={}", file.display())).spawn().map_err(|e| {
+        let _ = std::fs::remove_file(&file);
+        format!("메모킹을 열지 못했어요: {e}")
+    })?;
+    Ok("메모킹에 일정을 만들었어요".into())
+}
+
+/// 찾은 메모의 본문 복사 (읽는 글자만) — 잠근 메모는 메모킹에서 열어야
+#[tauri::command]
+fn copy_memo(app: AppHandle, id: String, notes: State<Arc<Memos>>) -> Result<String, String> {
+    if !notes.shown.lock().unwrap().contains(&id) {
+        return Err("찾은 메모가 아니에요".into());
+    }
+    let list = notes.list.read().unwrap();
+    let m = list.iter().find(|m| m.id == id).ok_or("메모를 찾지 못했어요")?;
+    if m.locked {
+        return Err("잠긴 메모는 메모킹에서 열어 복사해 주세요".into());
+    }
+    let text = if m.body().trim().is_empty() { m.title.clone() } else { m.body().to_string() };
+    app.clipboard().write_text(text).map(|_| "메모 내용을 복사했어요".into()).map_err(|e| e.to_string())
+}
+
 /// 찾은 줄의 할 일: open (열기 · 실행) · reveal (폴더 열기) · copyPath (경로 복사)
 #[tauri::command]
 fn act(app: AppHandle, action: String, path: String, idx: State<Arc<Index>>) -> Result<String, String> {
@@ -836,6 +881,20 @@ fn act(app: AppHandle, action: String, path: String, idx: State<Arc<Index>>) -> 
         "copyPath" => app.clipboard().write_text(path).map(|_| "경로를 복사했어요".into()).map_err(|e| err(&e)),
         _ => Err("모르는 할 일이에요".into()),
     }
+}
+
+/// 찾은 파일 · 폴더를 끌어 놓기 시작 (탐색기 · 바탕화면으로 복사 — drag.rs). 찾은 결과의 경로만
+#[tauri::command]
+fn drag_out(app: AppHandle, path: String, idx: State<Arc<Index>>) -> Result<(), String> {
+    if !idx.shown.lock().unwrap().contains(&path) {
+        return Err("찾은 결과가 아니에요".into());
+    }
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err("파일이 없어졌어요".into());
+    }
+    drag::start(&app, p);
+    Ok(())
 }
 
 #[tauri::command]
@@ -966,6 +1025,7 @@ fn show_main(app: &AppHandle) {
 }
 
 fn main() {
+    drag::init(); // 파일 끌어 놓기(OLE) — 창의 끌어 놓기 설정과 상관없이
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show_main(app))) // 두 번 켜면 이미 켜진 창을 띄운다
         .plugin(tauri_plugin_opener::init())
@@ -1101,7 +1161,7 @@ fn main() {
                 _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, hotkey_open, hotkey_state, hotkey_info, hotkey_record, open_all, finder_query, search_all, file_stats, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, hotkey_open, hotkey_state, hotkey_info, hotkey_record, open_all, finder_query, search_all, file_stats, sync_modules, open_memo, new_memo, new_schedule, copy_memo, open_opms, opms_auto, act, drag_out, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }
