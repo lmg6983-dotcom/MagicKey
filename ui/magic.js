@@ -17,6 +17,7 @@ const box = document.getElementById('magic');
 // 기본 순서 = 결과 순서 (계산은 메모 · 파일보다 위). 캡슐을 끌어 바꾼 순서는 magic.order 에
 const MODULES = [
   { id: 'memo', chip: '새 메모', name: '새 메모: 쓴 글을 메모킹 새 메모로 저장 (Enter 저장, Ctrl+Enter 저장하고 열기)', memo: true },
+  { id: 'schedule', chip: '일정', name: '일정 추가: 날짜가 든 글(내일 3시 치과)을 메모킹 일정 탭에 일정으로 (일정 탭 빠른 추가와 같게)', memo: true },
   { id: 'opms', chip: 'OPMS', name: 'OPMS 검색: 사건번호 · 출원인 · 발명자 · 초성을 쓰면 MagicSystem 으로 찾기 (사내망)', opms: true, defaultOff: true },
   { id: 'calc', chip: '계산', name: '계산기: 1,200 × 3 · 15% * 80000 · 3주 뒤 · 12/25까지 · 9:15부터 18:30까지' },
   { id: 'notes', chip: '메모', name: '메모 검색: 메모킹 메모의 제목 · 내용에서 찾아 메모킹으로 열기 (메모 폴더는 읽기만)', memo: true },
@@ -191,7 +192,7 @@ function row(r, index, query) {
     t.textContent = '새 메모로 저장';
     s.textContent = query;
   } else if (r.kind === 'remind') {
-    ico.append(svg('remind'));
+    ico.append(svg('date')); // 달력 — 일정
     t.textContent = `일정 추가 · ${r.label}`; // 무엇이 저장될지 (메모킹 일정 탭과 같은 해석)
     s.textContent = r.title;
     s.title = '메모킹 일정 탭에 일정으로 넣어요 (알림은 일정 탭에서 고른 기본값)';
@@ -268,7 +269,7 @@ function render() {
   const put = (mod, r) => add(mod, { row: { mod, ...r } });
   if (query && res) {
     if (res.newMemo) put('memo', { kind: 'new' }); // Enter 로 바로 저장
-    if (res.schedule) put('memo', { kind: 'remind', ...res.schedule }); // 내일 3시 치과 → 메모킹 일정 (일정 탭 빠른 추가와 같게)
+    if (res.schedule) put('schedule', { kind: 'remind', ...res.schedule }); // 내일 3시 치과 → 메모킹 일정 (일정 탭 빠른 추가와 같게, 일정 캡슐)
     if (res.opms) {
       const a = auto.query === query ? auto : null;
       if (a?.cases.length) {
@@ -399,7 +400,21 @@ function flash(ok, text) {
 
 // 창 높이를 내용에 맞춘다 (창 그림자 자리 10px 씩)
 let winHeight = 0;
+// 한글 조합 중(글자 하나를 다 치기 전)에는 창 크기를 바꾸지 않는다 — 조합 중에 창이 커지고 줄면 Windows 한글 입력기가
+//   커서 자리를 잃고 제 창(조합 창 · 도구 모음)을 화면 왼쪽 위에 띄워 타이핑을 가렸다. 결과는 바로 바꾸고, 크기는 조합이 끝나면
+let composing = false;
+let fitLater = false;
+input.addEventListener('compositionstart', () => (composing = true));
+input.addEventListener('compositionend', () => {
+  composing = false;
+  if (fitLater) fit();
+});
 function fit() {
+  if (composing) {
+    fitLater = true;
+    return;
+  }
+  fitLater = false;
   requestAnimationFrame(() => {
     const h = Math.ceil(box.getBoundingClientRect().height) + 20;
     if (h === winHeight) return;
