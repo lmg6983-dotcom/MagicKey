@@ -113,3 +113,26 @@ function highlighted(text, query) {
   }
   return span;
 }
+
+// 찾은 파일 · 폴더 줄을 끌어 탐색기 · 바탕화면 · 다른 폴더에 복사해 놓기 (drag_out — Windows 끌어 놓기, 원본은 그대로)
+//   조금(6px) 움직여야 끌기 — 그냥 누르기는 지금처럼 열기. 끈 뒤 따라오는 click 은 넘긴다 (row.dataset.dragged)
+function dragOut(row, path) {
+  row.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('.act-btn')) return;
+    const x = e.clientX;
+    const y = e.clientY;
+    const stop = () => {
+      row.removeEventListener('pointermove', move);
+      row.removeEventListener('pointerup', stop);
+    };
+    const move = (m) => {
+      if (Math.hypot(m.clientX - x, m.clientY - y) < 6) return;
+      stop();
+      row.dataset.dragged = '1';
+      setTimeout(() => delete row.dataset.dragged, 400);
+      window.__TAURI__.core.invoke('drag_out', { path }).catch(() => {});
+    };
+    row.addEventListener('pointermove', move);
+    row.addEventListener('pointerup', stop);
+  });
+}

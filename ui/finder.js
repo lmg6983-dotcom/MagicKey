@@ -148,8 +148,9 @@ function rowEl(r, i) {
     e.preventDefault();
     select(i, { scroll: false });
   });
+  if (r.kind === 'file' || r.kind === 'folder') dragOut(row, r.path);
   row.addEventListener('dblclick', (e) => {
-    if (!e.target.closest('.act-btn')) run(i, 0);
+    if (!e.target.closest('.act-btn') && !row.dataset.dragged) run(i, 0);
   });
   return row;
 }

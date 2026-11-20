@@ -29,3 +29,5 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_
 # 숨은 창의 WebView2 메모리 낮추기 · 그리기 멈추기 (webview.rs) — wry 가 쓰는 판 그대로
 webview2-com = "0.39"
 windows-core = "0.62"
+# 찾은 파일 · 폴더를 탐색기로 끌어 놓기 (OLE DoDragDrop · drag.rs) — webview2-com 이 쓰는 판 그대로 (implement 매크로는 windows_core 이름을 찾는다)
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Ole", "Win32_System_SystemServices", "Win32_UI_Shell"] }

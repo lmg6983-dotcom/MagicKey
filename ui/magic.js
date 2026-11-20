@@ -249,7 +249,8 @@ function row(r, index, query) {
     if ((e.movementX || e.movementY) && selected !== index) select(index); // 목록이 바뀌어 생긴 mousemove 는 무시
   });
   li.addEventListener('mousedown', (e) => e.preventDefault());
-  li.addEventListener('click', () => run(index, index === selected ? activeAct : 0));
+  if (r.kind === 'file' || r.kind === 'folder') dragOut(li, r.path);
+  li.addEventListener('click', () => !li.dataset.dragged && run(index, index === selected ? activeAct : 0));
   return li;
 }
 

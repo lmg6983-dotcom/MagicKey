@@ -22,6 +22,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
+mod drag;
 mod front;
 mod keyhook;
 mod webview;
@@ -838,6 +839,20 @@ fn act(app: AppHandle, action: String, path: String, idx: State<Arc<Index>>) -> 
     }
 }
 
+/// 찾은 파일 · 폴더를 끌어 놓기 시작 (탐색기 · 바탕화면으로 복사 — drag.rs). 찾은 결과의 경로만
+#[tauri::command]
+fn drag_out(app: AppHandle, path: String, idx: State<Arc<Index>>) -> Result<(), String> {
+    if !idx.shown.lock().unwrap().contains(&path) {
+        return Err("찾은 결과가 아니에요".into());
+    }
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        return Err("파일이 없어졌어요".into());
+    }
+    drag::start(&app, p);
+    Ok(())
+}
+
 #[tauri::command]
 fn copy(app: AppHandle, text: String) -> Result<String, String> {
     app.clipboard().write_text(text).map(|_| "복사했어요".into()).map_err(|e| e.to_string())
@@ -966,6 +981,7 @@ fn show_main(app: &AppHandle) {
 }
 
 fn main() {
+    drag::init(); // 파일 끌어 놓기(OLE) — 창의 끌어 놓기 설정과 상관없이
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show_main(app))) // 두 번 켜면 이미 켜진 창을 띄운다
         .plugin(tauri_plugin_opener::init())
@@ -1101,7 +1117,7 @@ fn main() {
                 _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, hotkey_open, hotkey_state, hotkey_info, hotkey_record, open_all, finder_query, search_all, file_stats, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
+        .invoke_handler(tauri::generate_handler![query, init, set_hotkey, hotkey_open, hotkey_state, hotkey_info, hotkey_record, open_all, finder_query, search_all, file_stats, sync_modules, open_memo, new_memo, open_opms, opms_auto, act, drag_out, copy, open_web, hide, update_state, update_check, update_install, update_later, update_page])
         .run(tauri::generate_context!())
         .expect("MagicKey 를 켜지 못했어요");
 }
