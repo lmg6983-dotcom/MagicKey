@@ -1,9 +1,9 @@
 /* 매직키 — 어디서든 빠르게 찾는 작은 창 (메모킹 매직키 창과 같은 모양)
    모양은 메모킹 · MagicSystem 과 한 벌: One UI 9.5 (크게 둥근 판 · 무채색 · 고른 줄은 연노랑 알약) — 메모킹 app/styles/base.css 토큰과 같은 값 */
 :root {
-  --surface: #f2f2f2; /* 판 바탕 (One UI 의 회색 바탕) */
+  --surface: #f4f2ef; /* 판 바탕 — 메모킹 --surface-0 과 같은 따뜻한 회색 */
   --card: #fff; /* 결과 묶음 카드 */
-  --panel-top: #f7f7f8;
+  --panel-top: #f8f6f3;
   --glow-a: rgba(255, 204, 0, 0.16); /* 왼쪽 위 노랑 빛 */
   --glow-b: rgba(110, 150, 255, 0.10); /* 오른쪽 아래 하늘빛 */
   --rim: rgba(255, 255, 255, 0.9);
@@ -25,9 +25,9 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --surface: #0a0a0b;
-    --card: #1c1c1e;
-    --panel-top: #111113;
+    --surface: #0f0e0d;
+    --card: #1d1c1a;
+    --panel-top: #141311;
     --glow-a: rgba(255, 204, 0, 0.12);
     --glow-b: rgba(110, 150, 255, 0.10);
     --rim: rgba(255, 255, 255, 0.08);
