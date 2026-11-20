@@ -210,8 +210,8 @@ async function run(i, act = activeAct) {
   if (!r) return;
   const a = actionsFor(r)[act] ?? actionsFor(r)[0];
   try {
-    const msg = r.kind === 'memo' ? await invoke('open_memo', { id: r.id }) : await invoke('act', { action: a.id, path: r.path });
-    if (a.id === 'copyPath') markDone(document.getElementById(`frow-${i}`)?.querySelector(`.act-btn[data-action="${a.id}"]`));
+    const msg = r.kind === 'memo' ? await invoke(a.id === 'copyMemo' ? 'copy_memo' : 'open_memo', { id: r.id }) : await invoke('act', { action: a.id, path: r.path });
+    if (a.id === 'copyPath' || a.id === 'copyMemo') markDone(document.getElementById(`frow-${i}`)?.querySelector(`.act-btn[data-action="${a.id}"]`));
     if (msg) {
       status(`✓ ${msg}`);
       clearTimeout(flashTimer);

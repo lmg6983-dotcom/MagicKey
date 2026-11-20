@@ -76,10 +76,11 @@ const siteLabel = (s) => (s.paste ? `${s.name} (복사해 열기)` : s.name);
 /** 이 줄에서 할 수 있는 일 (첫 번째가 Enter) */
 function actionsFor(r) {
   switch (r.kind) {
-    case 'new': case 'remind': return [{ id: 'save', label: '저장', text: true }, { id: 'saveOpen', label: '저장하고 열기', key: 'Ctrl+Enter', text: true }];
+    case 'new': return [{ id: 'save', label: '저장', text: true }, { id: 'saveOpen', label: '저장하고 열기', key: 'Ctrl+Enter', text: true }];
+    case 'remind': return [{ id: 'save', label: '일정 추가', text: true }];
     case 'opms': return [{ id: 'open', label: 'MagicSystem 에서 찾기' }];
     case 'case': return [{ id: 'open', label: 'MagicSystem 에서 열기' }, { id: 'copyRef', label: '관리번호 복사', text: true }];
-    case 'memo': return [{ id: 'openMemo', label: '메모킹에서 열기' }];
+    case 'memo': return [{ id: 'openMemo', label: '메모킹에서 열기' }, ...(r.locked ? [] : [{ id: 'copyMemo', label: '내용 복사', text: true }])];
     case 'app': return [{ id: 'open', label: '실행' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }];
     case 'folder': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '위 폴더에서 보기', key: 'Ctrl+Shift+E' }];
     case 'file': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }];

@@ -19,6 +19,8 @@ tauri-plugin-autostart = "2"
 tauri-plugin-updater = "2"
 # OPMS 저절로 찾기 — MagicSystem 과 같은 코어 (찾기 규칙 · SQL · 서버와 주고받기 · 설정)
 magicsystem-core = { git = "https://github.com/lmg6983-dotcom/MagicSystem", rev = "692d6c528ea206c4e2f054c290246228f7f7dc37", features = ["client"] }
+# "일정 추가" 줄 미리보기 — 메모킹 일정 탭 빠른 추가와 같은 글 읽기 (schedule_parse · JS 와 parity)
+memoking-core = { git = "https://github.com/lmg6983-dotcom/MemoKing", rev = "757dbead52eac955bec4e8a3e35c8b282a8791aa" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

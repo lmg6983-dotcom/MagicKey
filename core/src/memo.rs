@@ -30,6 +30,13 @@ pub struct Memo {
     pub file: PathBuf,
 }
 
+impl Memo {
+    /// 본문 (읽는 글자만, 잠근 메모는 빈 글) — "내용 복사"
+    pub fn body(&self) -> &str {
+        &self.body
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct MemoHit {
     pub id: String,
@@ -91,13 +98,26 @@ pub const MAGICKEY_SINCE: (u32, u32, u32) = (0, 77, 0);
 /// 메모킹 버전이 MagicKey 와 함께 쓰기를 아는가 — appVersion(0.77.1~, 켤 때마다 적음)과 seenVersion(목록 창을 열 때) 중 큰 것
 ///   (seenVersion 만 보면 알림 영역에서 조용히 켜진 메모킹을 옛 버전으로 잘못 본다)
 pub fn knows_magickey(json: &str) -> bool {
+    memoking_version(json) >= MAGICKEY_SINCE
+}
+
+/// 메모킹이 `--new-schedule-file=` (일정 탭 빠른 추가와 같은 일정 만들기)를 알아듣는 첫 버전
+pub const SCHEDULE_SINCE: (u32, u32, u32) = (1, 4, 0);
+
+/// 메모킹이 매직키의 "일정 추가" 를 알아듣는가 (옛 메모킹은 "알림 맞춰 저장" — 메모 + 알림 — 으로 대신)
+pub fn knows_schedule(json: &str) -> bool {
+    memoking_version(json) >= SCHEDULE_SINCE
+}
+
+/// 설정에 적힌 메모킹 버전 — appVersion(0.77.1~, 켤 때마다 적음)과 seenVersion(목록 창을 열 때) 중 큰 것
+fn memoking_version(json: &str) -> (u32, u32, u32) {
     let v: serde_json::Value = serde_json::from_str(json).unwrap_or_default();
     let ver = |key: &str| {
         let s = v.get(key).and_then(|x| x.as_str()).unwrap_or("");
         let mut n = s.trim_start_matches('v').split('.').map(|p| p.parse::<u32>().unwrap_or(0));
         (n.next().unwrap_or(0), n.next().unwrap_or(0), n.next().unwrap_or(0))
     };
-    ver("appVersion").max(ver("seenVersion")) >= MAGICKEY_SINCE
+    ver("appVersion").max(ver("seenVersion"))
 }
 
 static FRONT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\u{FEFF}?---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)").unwrap());
@@ -394,6 +414,8 @@ mod tests {
         assert!(knows_magickey(r#"{"seenVersion":"0.77.0"}"#) && knows_magickey(r#"{"seenVersion":"1.0.0"}"#));
         assert!(!knows_magickey(r#"{"seenVersion":"0.76.1"}"#) && !knows_magickey("{}"), "옛 메모킹은 인자를 몰라 새 메모 줄을 숨긴다");
         assert!(knows_magickey(r#"{"seenVersion":"0.76.1","appVersion":"0.77.1"}"#), "목록 창을 열지 않아 seenVersion 이 옛것이어도");
+        assert!(knows_schedule(r#"{"appVersion":"1.4.0"}"#) && knows_schedule(r#"{"appVersion":"1.10.0"}"#));
+        assert!(!knows_schedule(r#"{"appVersion":"1.3.0"}"#) && !knows_schedule("{}"), "옛 메모킹은 일정 글을 몰라 알림 맞춰 저장으로 대신한다");
 
         let dir = std::env::temp_dir().join(format!("magickey-memo-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("_memoking/trash")).unwrap();

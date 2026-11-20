@@ -192,8 +192,9 @@ function row(r, index, query) {
     s.textContent = query;
   } else if (r.kind === 'remind') {
     ico.append(svg('remind'));
-    t.textContent = '알림 맞춰 저장';
-    s.textContent = '글 속 날짜 · 시각에 메모킹이 알림을 맞춰요';
+    t.textContent = `일정 추가 · ${r.label}`; // 무엇이 저장될지 (메모킹 일정 탭과 같은 해석)
+    s.textContent = r.title;
+    s.title = '메모킹 일정 탭에 일정으로 넣어요 (알림은 일정 탭에서 고른 기본값)';
   } else if (r.kind === 'more') {
     ico.append(svg('more'));
     t.textContent = `다른 ${r.count.toLocaleString()}건 더 보기`;
@@ -267,7 +268,7 @@ function render() {
   const put = (mod, r) => add(mod, { row: { mod, ...r } });
   if (query && res) {
     if (res.newMemo) put('memo', { kind: 'new' }); // Enter 로 바로 저장
-    if (res.remind) put('memo', { kind: 'remind' }); // 내일 3시 치과 → 그때 알림
+    if (res.schedule) put('memo', { kind: 'remind', ...res.schedule }); // 내일 3시 치과 → 메모킹 일정 (일정 탭 빠른 추가와 같게)
     if (res.opms) {
       const a = auto.query === query ? auto : null;
       if (a?.cases.length) {
@@ -462,7 +463,9 @@ async function run(i, act = 0) {
     }
     let msg;
     if (r.kind === 'new' || r.kind === 'remind') {
-      msg = await invoke('new_memo', { text: input.value, open: a.id === 'saveOpen', remind: r.kind === 'remind' });
+      msg = r.kind === 'remind'
+        ? await invoke('new_schedule', { text: input.value })
+        : await invoke('new_memo', { text: input.value, open: a.id === 'saveOpen', remind: false });
       input.value = ''; // 저장한 글은 다음에 열 때 남기지 않는다
       grow();
     } else if (r.kind === 'opms') msg = await invoke('open_opms', { text: input.value });
@@ -474,6 +477,11 @@ async function run(i, act = 0) {
         return;
       }
       msg = await invoke('open_opms', { text: ref });
+    }
+    else if (r.kind === 'memo' && a.id === 'copyMemo') {
+      flash(true, await invoke('copy_memo', { id: r.id }));
+      markDone(btn());
+      return;
     }
     else if (r.kind === 'memo') msg = await invoke('open_memo', { id: r.id });
     else if (r.kind === 'more') msg = await invoke('open_all', { text: input.value, mods: MODULES.map((m) => m.id).filter(isOn) });
