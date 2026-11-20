@@ -488,7 +488,7 @@ async function run(i, act = 0) {
     else if (r.kind === 'site') msg = await invoke('open_web', { kind: 'site', site: '', text: r.url });
     else if (r.kind === 'web' || r.kind === 'ai') msg = await invoke('open_web', { kind: r.kind, site: a.id, text: input.value });
     else msg = await invoke('act', { action: a.id, path: r.path });
-    if (a.id === 'copyPath') {
+    if (a.id === 'copyPath' || a.id === 'copyFile') { // 복사는 창을 닫지 않고 ✓ (이어서 붙여 넣을 곳으로)
       flash(true, msg);
       markDone(btn());
       return;

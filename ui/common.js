@@ -82,8 +82,8 @@ function actionsFor(r) {
     case 'case': return [{ id: 'open', label: 'MagicSystem 에서 열기' }, { id: 'copyRef', label: '관리번호 복사', text: true }];
     case 'memo': return [{ id: 'openMemo', label: '메모킹에서 열기' }, ...(r.locked ? [] : [{ id: 'copyMemo', label: '내용 복사', text: true }])];
     case 'app': return [{ id: 'open', label: '실행' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }];
-    case 'folder': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '위 폴더에서 보기', key: 'Ctrl+Shift+E' }];
-    case 'file': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }];
+    case 'folder': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '위 폴더에서 보기', key: 'Ctrl+Shift+E' }, { id: 'copyFile', label: '폴더 복사' }];
+    case 'file': return [{ id: 'open', label: '열기' }, { id: 'copyPath', label: '경로 복사', key: 'Ctrl+Shift+C' }, { id: 'reveal', label: '폴더 열기', key: 'Ctrl+Shift+E' }, { id: 'copyFile', label: '파일 복사' }];
     case 'calc': return [{ id: 'copy', label: '결과 복사' }, { id: 'copyExpr', label: '식까지 복사', text: true }];
     case 'date': return [{ id: 'copy', label: '결과 복사' }, { id: 'copyIso', label: `${r.plain} 복사` }, { id: 'copyExpr', label: '쓴 글까지 복사', text: true }];
     case 'site': return [{ id: 'open', label: '사이트 열기' }];
