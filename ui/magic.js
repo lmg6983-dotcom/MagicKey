@@ -400,7 +400,21 @@ function flash(ok, text) {
 
 // 창 높이를 내용에 맞춘다 (창 그림자 자리 10px 씩)
 let winHeight = 0;
+// 한글 조합 중(글자 하나를 다 치기 전)에는 창 크기를 바꾸지 않는다 — 조합 중에 창이 커지고 줄면 Windows 한글 입력기가
+//   커서 자리를 잃고 제 창(조합 창 · 도구 모음)을 화면 왼쪽 위에 띄워 타이핑을 가렸다. 결과는 바로 바꾸고, 크기는 조합이 끝나면
+let composing = false;
+let fitLater = false;
+input.addEventListener('compositionstart', () => (composing = true));
+input.addEventListener('compositionend', () => {
+  composing = false;
+  if (fitLater) fit();
+});
 function fit() {
+  if (composing) {
+    fitLater = true;
+    return;
+  }
+  fitLater = false;
   requestAnimationFrame(() => {
     const h = Math.ceil(box.getBoundingClientRect().height) + 20;
     if (h === winHeight) return;
