@@ -105,9 +105,9 @@ fn render(_: &str) -> Option<Vec<u8>> {
 /// 셸 그림(BGRA, 보통 알파를 곱해 둔 꼴) → PNG 용 RGBA. 알파가 하나도 없는 옛 아이콘은 불투명으로
 #[cfg_attr(not(windows), allow(dead_code))]
 fn bgra_to_rgba(mut buf: Vec<u8>) -> Vec<u8> {
-    let no_alpha = buf.chunks_exact(4).all(|p| p[3] == 0);
-    let premul = !no_alpha && buf.chunks_exact(4).all(|p| p[0] <= p[3] && p[1] <= p[3] && p[2] <= p[3]);
-    for p in buf.chunks_exact_mut(4) {
+    let no_alpha = buf.as_chunks::<4>().0.iter().all(|p| p[3] == 0);
+    let premul = !no_alpha && buf.as_chunks::<4>().0.iter().all(|p| p[0] <= p[3] && p[1] <= p[3] && p[2] <= p[3]);
+    for p in buf.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
         if no_alpha {
             p[3] = 255;
