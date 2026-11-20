@@ -1,9 +1,9 @@
 /* 매직키 — 어디서든 빠르게 찾는 작은 창 (메모킹 매직키 창과 같은 모양)
    모양은 메모킹 · MagicSystem 과 한 벌: One UI 9.5 (크게 둥근 판 · 무채색 · 고른 줄은 연노랑 알약) — 메모킹 app/styles/base.css 토큰과 같은 값 */
 :root {
-  --surface: #f4f2ef; /* 판 바탕 — 메모킹 --surface-0 과 같은 따뜻한 회색 */
-  --card: #fff; /* 결과 묶음 카드 */
-  --panel-top: #f8f6f3;
+  --surface: #ffffff; /* 판 바탕 — 메모킹 --surface-0 과 같은 흰색 */
+  --card: #f6f6f6; /* 결과 묶음 카드 — 메모킹 --surface-1 과 같은 옅은 회색 */
+  --panel-top: #ffffff;
   --glow-a: rgba(255, 204, 0, 0.16); /* 왼쪽 위 노랑 빛 */
   --glow-b: rgba(110, 150, 255, 0.10); /* 오른쪽 아래 하늘빛 */
   --rim: rgba(255, 255, 255, 0.9);
@@ -65,8 +65,8 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-grip:hover span { background: var(--muted); }
 
 /* 입력칸: 판 위의 흰 알약 (여러 줄이 되면 둥근 사각으로 늘어난다) — 글자는 결과 줄 아이콘과 같은 세로선에서 시작 */
-.magic-top { display: flex; align-items: flex-start; gap: 12px; margin: 4px 12px 8px; padding: 9px 12px 9px 16px; border-radius: 24px; background: var(--card); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 18px rgba(0, 0, 0, 0.06), inset 0 0 0 1px var(--field-line); transition: box-shadow 0.15s ease-out; }
-.magic-top:focus-within { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 18px rgba(0, 0, 0, 0.06), inset 0 0 0 1.5px var(--accent-line), 0 0 0 4px color-mix(in srgb, var(--brand) 16%, transparent); }
+.magic-top { display: flex; align-items: flex-start; gap: 12px; margin: 4px 12px 8px; padding: 9px 12px 9px 16px; border-radius: 24px; background: var(--card); box-shadow: none; transition: box-shadow 0.15s ease-out; }
+.magic-top:focus-within { box-shadow: inset 0 0 0 1.5px var(--accent-line), 0 0 0 4px color-mix(in srgb, var(--brand) 16%, transparent); }
 .magic-input { flex: 1; min-width: 0; display: block; height: 30px; max-height: 174px; padding: 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; color: var(--text); font: inherit; font-size: 20px; font-weight: 500; line-height: 30px; caret-color: #e0a800; }
 .magic-input::placeholder { color: var(--muted); }
 .magic-clear { flex: none; width: 26px; height: 26px; margin-top: 2px; border: 0; border-radius: 50%; background: var(--fill-tab); color: var(--muted); font-size: 12px; cursor: pointer; }
