@@ -2393,7 +2393,7 @@ dependencies = [
 
 [[package]]
 name = "magickey-core"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "chrono",
  "fancy-regex 0.14.0",
