@@ -293,7 +293,7 @@ struct QueryOut {
     /// '새 메모' 줄을 보여 줄까 (메모킹이 알아듣고, 기능을 켜 둠)
     #[serde(rename = "newMemo")]
     new_memo: bool,
-    /// '일정 추가' 줄 — 첫 줄을 메모킹 일정 탭과 같은 규칙으로 읽은 날짜 · 이름 (날짜 계산 글이 아님, schedule.rs)
+    /// '일정 추가' 줄 (일정 캡슐) — 첫 줄을 메모킹 일정 탭과 같은 규칙으로 읽은 날짜 · 이름 (날짜 계산 글이 아님, schedule.rs)
     schedule: Option<schedule::Preview>,
     /// 'OPMS 에서 찾기' 줄 (MagicSystem 이 있고, 사건번호 · 이름 · 초성 같은 글)
     opms: bool,
@@ -342,7 +342,8 @@ async fn query(text: String, mods: Vec<String>, idx: State<'_, Arc<Index>>, note
         question: web::looks_like_question(&text),
         memos,
         new_memo,
-        schedule: (new_memo && !date_calc && memo::mentions_date(&text)).then(|| schedule::preview(&text, chrono::Local::now())).flatten(),
+        // 일정 캡슐을 켜 뒀고 메모킹이 알아들으면 (새 메모 캡슐과 따로 — 새 메모를 꺼도 일정은 된다)
+        schedule: (on("schedule") && notes.can_make.load(Ordering::SeqCst) && !date_calc && memo::mentions_date(&text)).then(|| schedule::preview(&text, chrono::Local::now())).flatten(),
         opms: show_opms,
         opms_auto: show_opms && { let s = mo.settings(); !s.host.is_empty() && opms_search::auto_query(text.trim(), &s.shapes) },
         memo_more,
@@ -461,7 +462,7 @@ fn key_label(s: &Shortcut) -> String {
 }
 
 /// 창의 기능 캡슐과 같은 것 — 알림 영역 메뉴 '설정' 에서도 켜고 끈다 (id 는 magic.js MODULES 와 같게)
-const MODULES: [(&str, &str); 8] = [("memo", "새 메모 (메모킹)"), ("notes", "메모 검색 (메모킹)"), ("opms", "OPMS 검색 (MagicSystem)"), ("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
+const MODULES: [(&str, &str); 9] = [("memo", "새 메모 (메모킹)"), ("schedule", "일정 추가 (메모킹)"), ("notes", "메모 검색 (메모킹)"), ("opms", "OPMS 검색 (MagicSystem)"), ("apps", "앱 검색"), ("files", "파일 검색"), ("calc", "계산 · 날짜 계산"), ("web", "웹 검색"), ("ai", "웹 AI")];
 
 /// 알림 영역 메뉴에서 글자 · 체크를 바꿔야 하는 줄
 struct TrayMenu {
@@ -1091,7 +1092,7 @@ fn main() {
             let mods = MODULES
                 .iter()
                 .filter(|(id, _)| match *id {
-                    "memo" | "notes" => has_memo, // 메모킹이 없으면 메모 줄도 없다
+                    "memo" | "schedule" | "notes" => has_memo, // 메모킹이 없으면 메모 · 일정 줄도 없다
                     "opms" => has_opms,
                     _ => true,
                 })
