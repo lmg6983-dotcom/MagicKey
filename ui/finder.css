@@ -12,13 +12,13 @@ body {
   border: 0; border-radius: 999px; background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), inset 0 0 0 1px var(--line);
   font: inherit; font-size: 15px; outline: none;
 }
-.finder-input:focus { box-shadow: inset 0 0 0 1.5px var(--accent-line), 0 0 0 4px color-mix(in srgb, var(--brand) 16%, transparent); } /* 입력창과 같은 포커스 */
+.finder-input:focus { box-shadow: inset 0 0 0 1.5px var(--accent-line); } /* 입력창과 같은 포커스 */
 .finder-tabs { display: flex; flex: none; gap: 2px; padding: 3px; border-radius: 999px; background: var(--fill-tab); }
 .finder-tabs button {
   height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--muted);
   font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap;
 }
-.finder-tabs button[aria-selected="true"] { background: var(--sel); color: var(--text); box-shadow: none; } /* 고른 탭은 연노랑 알약 (메모킹 · MagicSystem 탭과 같게) */
+.finder-tabs button[aria-selected="true"] { background: var(--sel); color: var(--text); box-shadow: none; } /* 고른 탭은 무채색 알약 (메모킹 · MagicSystem 탭과 같게) */
 .finder-tabs button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 .finder-tabs .n { margin-left: 2px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
 
@@ -47,7 +47,7 @@ body {
 .frow .ico svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .frow .ico.real { background: none; border-radius: 0; }
 .frow .ico.real img { width: 22px; height: 22px; object-fit: contain; }
-.frow b { font-weight: 800; background: color-mix(in srgb, var(--brand) 38%, transparent); border-radius: 3px; padding: 0 1px; }
+.frow b { font-weight: 800; color: var(--text); } /* 매직키 창과 같게 굵게만 */
 .frow .col-where, .frow .col-size, .frow .col-time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .finder-empty { margin: 40px 0; color: var(--muted); text-align: center; }
 

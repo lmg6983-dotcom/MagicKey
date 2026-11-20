@@ -4,7 +4,7 @@
   --surface: #f5f5f5; /* 판 바탕 — 메모킹 --surface-0 (카톡 바탕)과 같은 값 */
   --card: #ffffff; /* 결과 묶음 · 입력칸은 흰 트레이 */
   --panel-top: #f8f8f8;
-  --glow-a: rgba(255, 204, 0, 0.16); /* 왼쪽 위 노랑 빛 */
+  --glow-a: rgba(255, 204, 0, 0.06); /* 왼쪽 위 아주 옅은 노랑 빛 (판 바탕이 노랗게 보이지 않을 만큼) */
   --glow-b: rgba(110, 150, 255, 0.10); /* 오른쪽 아래 하늘빛 */
   --rim: rgba(255, 255, 255, 0.9);
   --field-line: rgba(0, 0, 0, 0.04);
@@ -12,8 +12,8 @@
   --muted: #686868;
   --line: #e6e6e6;
   --fill-tab: rgba(17, 17, 17, 0.05);
-  --sel: #ffeeaa; /* 메모킹 --brand-yellow-soft 와 같은 값 */
-  --accent-line: #d9a100; /* 노랑 선 (메모킹과 같은 값) */
+  --sel: #ececec; /* 고른 줄: 무채색 (메모킹과 같게 — 노랑은 고른 줄의 주요 동작 단추에만) */
+  --accent-line: rgba(25, 25, 25, 0.32); /* 입력칸 포커스 선 (메모킹과 같은 값) */
   --sep: rgba(0, 0, 0, 0.07);
   --brand: #ffcc00;
   --ok-text: #1e7a45;
@@ -28,7 +28,7 @@
     --surface: #0f0e0d;
     --card: #1d1c1a;
     --panel-top: #141311;
-    --glow-a: rgba(255, 204, 0, 0.12);
+    --glow-a: rgba(255, 204, 0, 0.05);
     --glow-b: rgba(110, 150, 255, 0.10);
     --rim: rgba(255, 255, 255, 0.08);
     --field-line: rgba(255, 255, 255, 0.06);
@@ -36,8 +36,8 @@
     --muted: #a0a0a0;
     --line: rgba(255, 255, 255, 0.14);
     --fill-tab: rgba(255, 255, 255, 0.08);
-    --sel: rgba(255, 204, 0, 0.2);
-    --accent-line: #ffcc00;
+    --sel: rgba(255, 255, 255, 0.12);
+    --accent-line: rgba(255, 255, 255, 0.4);
     --sep: rgba(255, 255, 255, 0.08);
     --ok-text: #6fd59a;
     --err-text: #ff8a80;
@@ -66,7 +66,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 
 /* 입력칸: 판 위의 흰 알약 (여러 줄이 되면 둥근 사각으로 늘어난다) — 글자는 결과 줄 아이콘과 같은 세로선에서 시작 */
 .magic-top { display: flex; align-items: flex-start; gap: 12px; margin: 4px 12px 8px; padding: 9px 12px 9px 16px; border-radius: 24px; background: var(--card); box-shadow: none; transition: box-shadow 0.15s ease-out; }
-.magic-top:focus-within { box-shadow: inset 0 0 0 1.5px var(--accent-line), 0 0 0 4px color-mix(in srgb, var(--brand) 16%, transparent); }
+.magic-top:focus-within { box-shadow: inset 0 0 0 1.5px var(--accent-line); }
 .magic-input { flex: 1; min-width: 0; display: block; height: 30px; max-height: 174px; padding: 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; color: var(--text); font: inherit; font-size: 20px; font-weight: 500; line-height: 30px; caret-color: #e0a800; }
 .magic-input::placeholder { color: var(--muted); }
 .magic-clear { flex: none; width: 26px; height: 26px; margin-top: 2px; border: 0; border-radius: 50%; background: var(--fill-tab); color: var(--muted); font-size: 12px; cursor: pointer; }
@@ -114,8 +114,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-row .t { font-size: 15px; line-height: 19px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .magic-row .s { font-size: 12.5px; line-height: 16px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .magic-row .s:empty { display: none; }
-.magic-row b { font-weight: 800; background: rgba(255, 205, 0, 0.38); border-radius: 3px; padding: 0 1px; }
-.magic-row[aria-selected="true"] b { background: transparent; box-shadow: inset 0 -2px 0 #e0a800; border-radius: 0; }
+.magic-row b { font-weight: 800; color: var(--text); } /* 찾은 말은 굵게만 (줄마다 노란 칠이 깔려 난잡하던 것 — Spotlight 처럼) */
 .magic-row .side { flex: none; color: var(--muted); font-size: 12px; }
 .magic-row[aria-selected="true"] .side { display: none; }
 .magic-row .acts { position: relative; z-index: 2; } /* 할 일 단추는 고른 줄 표시 위로 */
