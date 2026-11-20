@@ -28,6 +28,24 @@ function svg(name) {
   s.append(p);
   return s;
 }
+/**
+ * 앱 · 파일 · 폴더의 실제 아이콘 (탐색기에 보이는 그림 — app/src/shellicon.rs 가 fileicon:// 로 준다).
+ * 그림이 오면 칸의 기능 색 바탕을 걷고 그림만, 못 얻으면(다른 OS · 지운 파일) 원래 선 그림 그대로.
+ */
+function realIcon(ico, kind, path) {
+  ico.append(svg(kind));
+  const conv = window.__TAURI__?.core?.convertFileSrc;
+  if (!path || !conv) return;
+  const img = new Image(); // 문서에 붙이기 전에 받아 두고, 다 받았을 때만 바꾼다 (깜빡이지 않게)
+  img.alt = '';
+  img.decoding = 'async';
+  img.draggable = false;
+  img.onload = () => {
+    ico.replaceChildren(img);
+    ico.classList.add('real');
+  };
+  img.src = conv(path, 'fileicon');
+}
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;

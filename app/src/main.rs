@@ -25,6 +25,7 @@ use tauri_plugin_opener::OpenerExt;
 mod drag;
 mod front;
 mod schedule;
+mod shellicon;
 mod keyhook;
 mod webview;
 
@@ -1047,6 +1048,17 @@ fn main() {
     drag::init(); // 파일 끌어 놓기(OLE) — 창의 끌어 놓기 설정과 상관없이
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| show_main(app))) // 두 번 켜면 이미 켜진 창을 띄운다
+        // 찾은 앱 · 파일 · 폴더의 실제 아이콘 (shellicon.rs) — 셸 COM 은 STA 가 필요해 요청마다 따로 스레드에서
+        .register_asynchronous_uri_scheme_protocol("fileicon", |_ctx, req, responder| {
+            let path = shellicon::path_of(req.uri().path());
+            std::thread::spawn(move || {
+                let res = match shellicon::png(&path) {
+                    Some(bytes) => tauri::http::Response::builder().header("Content-Type", "image/png").header("Cache-Control", "max-age=86400").body(bytes),
+                    None => tauri::http::Response::builder().status(404).body(Vec::new()),
+                };
+                responder.respond(res.unwrap_or_else(|_| tauri::http::Response::new(Vec::new())));
+            });
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))

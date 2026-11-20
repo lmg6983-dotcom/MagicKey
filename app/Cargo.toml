@@ -26,6 +26,8 @@ arboard = { version = "3", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# 앱 · 파일 아이콘을 PNG 로 (shellicon.rs) — tauri 가 이미 쓰는 판
+png = "0.18"
 
 # 여는 단축키를 저수준 키보드 훅으로 (keyhook.rs), 창을 앞으로 올리기 (front.rs) — 전역 단축키 플러그인이 이미 쓰는 판
 [target.'cfg(windows)'.dependencies]
@@ -34,4 +36,5 @@ windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_
 webview2-com = "0.39"
 windows-core = "0.62"
 # 찾은 파일 · 폴더를 탐색기로 끌어 놓기 (셸 SHDoDragDrop · drag.rs) — webview2-com 이 쓰는 판 그대로
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Ole", "Win32_UI_Shell"] }
+# 앱 · 파일의 실제 아이콘 (IShellItemImageFactory · shellicon.rs) 에 Gdi 도
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Ole", "Win32_UI_Shell", "Win32_Graphics_Gdi"] }

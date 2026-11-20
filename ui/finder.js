@@ -118,7 +118,8 @@ function rowEl(r, i) {
   row.setAttribute('aria-selected', String(i === selected));
   const name = el('span', 'col-name');
   const ico = el('span', 'ico');
-  ico.append(svg(r.kind === 'memo' && r.locked ? 'lock' : r.kind));
+  if (r.kind === 'app' || r.kind === 'file' || r.kind === 'folder') realIcon(ico, r.kind, r.path); // 매직키 창과 같은 실제 아이콘
+  else ico.append(svg(r.kind === 'memo' && r.locked ? 'lock' : r.kind));
   const label = el('span', 'nm');
   label.append(highlighted(nameOf(r), query));
   name.append(ico, label);
