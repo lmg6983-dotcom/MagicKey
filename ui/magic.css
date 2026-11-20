@@ -95,7 +95,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-section { display: flex; align-items: center; gap: 6px; padding: 10px 16px 4px; color: var(--muted); font-size: 13.5px; font-weight: 700; }
 .magic-section::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mod); }
 .magic-section.sub::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--mod); }
-.magic-section .count { padding: 0 6px; border-radius: 99px; background: var(--fill-tab); font-weight: 600; }
+.magic-section .count { min-width: 16px; padding: 0 4px; border-radius: 99px; line-height: 16px; text-align: center; background: var(--fill-tab); font-weight: 600; }
 
 /* 결과: One UI 설정처럼 묶음마다 흰 카드 하나 — 이어진 줄의 첫 줄 위 · 끝 줄 아래만 둥글게 */
 .magic-row { position: relative; box-sizing: border-box; display: flex; align-items: center; min-height: 46px; padding: 5px 16px; gap: 12px; /* 빠르게 훑는 창이라 위아래는 촘촘하게 */ background: var(--card); cursor: pointer; }
