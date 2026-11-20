@@ -4,7 +4,7 @@
 /* 키 받는 칸: 누르면 기록 — 기록하는 동안 노란 테두리가 숨 쉰다 */
 .hk-field {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-  min-height: 112px; padding: 18px 16px 14px; border: 1.5px solid var(--line); border-radius: 14px;
+  min-height: 112px; padding: 18px 16px 14px; border: 1.5px solid var(--line); border-radius: 20px;
   background: var(--fill-tab); color: var(--text); font: inherit; cursor: pointer;
   transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out, background-color 0.15s ease-out;
 }
