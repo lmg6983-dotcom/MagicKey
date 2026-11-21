@@ -31,13 +31,13 @@
 @keyframes hk-pop { from { transform: translateY(2px) scale(0.96); opacity: 0.4; } }
 
 .hk-prompt { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
-.hk-field.rec .hk-prompt::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #e5484d; animation: hk-blink 1.2s steps(2, start) infinite; }
+.hk-field.rec .hk-prompt::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ok-red-400); animation: hk-blink 1.2s steps(2, start) infinite; }
 @keyframes hk-blink { to { visibility: hidden; } }
 
 .hk-status { min-height: 20px; margin: 10px 2px 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .hk-status.ok { color: var(--ok-text); }
 .hk-status.warn { color: var(--text); }
-.hk-status.warn::before { content: "⚠ "; color: #c98a00; }
+.hk-status.warn::before { content: "⚠ "; color: var(--ok-yellow-500); }
 .hk-status.err { color: var(--err-text); }
 
 .hk-suggest { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; }
