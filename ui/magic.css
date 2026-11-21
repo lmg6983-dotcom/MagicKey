@@ -2,18 +2,19 @@
    모양은 메모킹 · MagicSystem 과 한 벌: One UI 9.5 (크게 둥근 판 · 무채색 · 고른 줄은 연노랑 알약) — 메모킹 app/styles/base.css 토큰과 같은 값 */
 /* OKLab 팔레트 — 화면의 모든 색은 여기서 고른다 (메모킹 · MagicKey · MagicSystem 같은 값)
    OKLCH 좌표(밝기 L · 채도 C · 색상 h)에서 뽑아 sRGB 로 적었다. 반투명은 color-mix(in oklab, 토큰 N%, transparent)
-   무채색 gray-0(흰)~1000(검정) · 색 50(밝음)~950(어두움) · 노랑 300 = 브랜드 #ffcc00 · paper-* = 메모 종이 */
+   꼭 필요한 것만: 무채색 10 · 색 22 (노랑 300 = 브랜드 #ffcc00) · 메모 종이 6색 × (바탕 · 머리줄 · 점) × 밝은/어두운
+   반투명은 검정 · 흰색 10단계(4 8 12 16 24 32 48 64 80 90%), 색은 5단계(8 16 32 48 80%) */
 :root {
-  --ok-gray-0: #ffffff; --ok-gray-25: #fafafa; --ok-gray-50: #f5f5f5; --ok-gray-100: #ebebeb; --ok-gray-150: #e1e1e1; --ok-gray-200: #d4d4d4; --ok-gray-300: #bebebe; --ok-gray-400: #9e9e9e; --ok-gray-500: #808080; --ok-gray-550: #737373; --ok-gray-600: #696969; --ok-gray-700: #4d4d4d; --ok-gray-800: #333333; --ok-gray-850: #242424; --ok-gray-900: #191919; --ok-gray-950: #0e0e0e; --ok-gray-975: #060606; --ok-gray-1000: #000000;
-  --ok-red-50: #fff2f0; --ok-red-100: #ffdfdc; --ok-red-200: #ffc3bd; --ok-red-300: #ffa098; --ok-red-400: #ff716b; --ok-red-500: #f14445; --ok-red-600: #d12830; --ok-red-700: #ae1320; --ok-red-800: #880a16; --ok-red-900: #64040c; --ok-red-950: #420205;
-  --ok-orange-50: #fff2eb; --ok-orange-100: #ffe1d1; --ok-orange-200: #ffc6a7; --ok-orange-300: #ffa571; --ok-orange-400: #fa7c1f; --ok-orange-500: #da6600; --ok-orange-600: #b65400; --ok-orange-700: #944300; --ok-orange-800: #733200; --ok-orange-900: #542300; --ok-orange-950: #361400;
-  --ok-green-50: #e8fbec; --ok-green-100: #cef3d6; --ok-green-200: #a6e6b6; --ok-green-300: #74d792; --ok-green-400: #41c170; --ok-green-500: #00a855; --ok-green-600: #008c46; --ok-green-700: #007137; --ok-green-800: #005729; --ok-green-900: #003e1c; --ok-green-950: #00270f;
-  --ok-teal-50: #e7f9fa; --ok-teal-100: #cbf0f2; --ok-teal-200: #a0e2e5; --ok-teal-300: #6ad1d6; --ok-teal-400: #2bbac1; --ok-teal-500: #00a0a6; --ok-teal-600: #00858a; --ok-teal-700: #006b70; --ok-teal-800: #005256; --ok-teal-900: #003b3e; --ok-teal-950: #002527;
-  --ok-blue-50: #eff6ff; --ok-blue-100: #d9eaff; --ok-blue-200: #b8d7ff; --ok-blue-300: #91c1ff; --ok-blue-400: #60a7ff; --ok-blue-500: #1f8aff; --ok-blue-600: #0072dd; --ok-blue-700: #005bb4; --ok-blue-800: #00468c; --ok-blue-900: #003167; --ok-blue-950: #001e44;
-  --ok-violet-50: #f4f4ff; --ok-violet-100: #e6e5ff; --ok-violet-200: #d1ceff; --ok-violet-300: #bab3ff; --ok-violet-400: #a192ff; --ok-violet-500: #8a6fff; --ok-violet-600: #764cf1; --ok-violet-700: #5f38ca; --ok-violet-800: #49299f; --ok-violet-900: #341b76; --ok-violet-950: #200e4e;
-  --ok-purple-50: #f7f3ff; --ok-purple-100: #ebe3ff; --ok-purple-200: #dbcaff; --ok-purple-300: #c9acff; --ok-purple-400: #b58afa; --ok-purple-500: #9d6fe3; --ok-purple-600: #8558c5; --ok-purple-700: #6c44a4; --ok-purple-800: #533380; --ok-purple-900: #3c235e; --ok-purple-950: #25143d;
-  --ok-pink-50: #fff1f6; --ok-pink-100: #ffdde9; --ok-pink-200: #ffbfd7; --ok-pink-300: #ff99c2; --ok-pink-400: #f075aa; --ok-pink-500: #d85891; --ok-pink-600: #ba4179; --ok-pink-700: #9a2f62; --ok-pink-800: #78224b; --ok-pink-900: #581635; --ok-pink-950: #390b21;
-  --ok-yellow-50: #fff5d6; --ok-yellow-100: #ffeaab; --ok-yellow-200: #ffdf7b; --ok-yellow-300: #ffcc00; --ok-yellow-400: #e3b916; --ok-yellow-500: #c6a000; --ok-yellow-600: #a28300; --ok-yellow-700: #866c02; --ok-yellow-800: #645000; --ok-yellow-900: #453600; --ok-yellow-950: #281e00;
+  --ok-gray-0: #ffffff; --ok-gray-50: #f5f5f5; --ok-gray-100: #ebebeb; --ok-gray-200: #d4d4d4; --ok-gray-400: #9e9e9e; --ok-gray-550: #737373; --ok-gray-850: #242424; --ok-gray-900: #191919; --ok-gray-950: #0e0e0e; --ok-gray-1000: #000000;
+  --ok-red-100: #ffdfdc; --ok-red-400: #ff716b; --ok-red-600: #d12830; --ok-red-800: #880a16;
+  --ok-orange-400: #fa7c1f;
+  --ok-green-200: #a6e6b6; --ok-green-500: #00a855; --ok-green-700: #007137;
+  --ok-teal-500: #00a0a6;
+  --ok-blue-100: #d9eaff; --ok-blue-400: #60a7ff; --ok-blue-600: #0072dd; --ok-blue-900: #003167;
+  --ok-violet-600: #764cf1;
+  --ok-purple-200: #dbcaff; --ok-purple-600: #8558c5;
+  --ok-pink-200: #ffbfd7; --ok-pink-600: #ba4179;
+  --ok-yellow-100: #ffeaab; --ok-yellow-300: #ffcc00; --ok-yellow-500: #c6a000; --ok-yellow-800: #645000;
   --ok-paper-yellow: #f4edd7; --ok-paper-yellow-bar: #ede3c2; --ok-paper-yellow-chip: #c4a953; --ok-paper-yellow-dark: #342d19; --ok-paper-yellow-dark-bar: #463c20; --ok-paper-yellow-dark-chip: #a89044;
   --ok-paper-green: #dff3e2; --ok-paper-green-bar: #cfecd3; --ok-paper-green-chip: #76be86; --ok-paper-green-dark: #213324; --ok-paper-green-dark-bar: #2c4431; --ok-paper-green-dark-chip: #63a471;
   --ok-paper-pink: #fee5ee; --ok-paper-pink-bar: #fdd7e4; --ok-paper-pink-chip: #e28dae; --ok-paper-pink-dark: #3c262f; --ok-paper-pink-dark-bar: #50333e; --ok-paper-pink-dark-chip: #c27895;
@@ -25,47 +26,47 @@
 :root {
   --surface: var(--ok-gray-50); /* 판 바탕 — 메모킹 --surface-0 (카톡 바탕)과 같은 값 */
   --card: var(--ok-gray-0); /* 결과 묶음 · 입력칸은 흰 트레이 */
-  --panel-top: var(--ok-gray-25);
-  --glow-a: color-mix(in oklab, var(--ok-yellow-300) 6%, transparent); /* 왼쪽 위 아주 옅은 노랑 빛 (판 바탕이 노랗게 보이지 않을 만큼) */
-  --glow-b: color-mix(in oklab, var(--ok-blue-400) 10%, transparent); /* 오른쪽 아래 하늘빛 */
+  --panel-top: var(--ok-gray-50);
+  --glow-a: color-mix(in oklab, var(--ok-yellow-300) 8%, transparent); /* 왼쪽 위 아주 옅은 노랑 빛 (판 바탕이 노랗게 보이지 않을 만큼) */
+  --glow-b: color-mix(in oklab, var(--ok-blue-400) 8%, transparent); /* 오른쪽 아래 하늘빛 */
   --rim: color-mix(in oklab, var(--ok-gray-0) 90%, transparent);
   --field-line: color-mix(in oklab, var(--ok-gray-1000) 4%, transparent);
   --text: var(--ok-gray-900);
-  --muted: var(--ok-gray-600);
+  --muted: var(--ok-gray-550);
   --line: var(--ok-gray-100);
-  --fill-tab: color-mix(in oklab, var(--ok-gray-950) 5%, transparent);
+  --fill-tab: color-mix(in oklab, var(--ok-gray-1000) 4%, transparent);
   --sel: var(--ok-gray-100); /* 고른 줄: 무채색 (메모킹과 같게 — 노랑은 고른 줄의 주요 동작 단추에만) */
-  --accent-line: color-mix(in oklab, var(--ok-gray-900) 32%, transparent); /* 입력칸 포커스 선 (메모킹과 같은 값) */
-  --sep: color-mix(in oklab, var(--ok-gray-1000) 7%, transparent);
+  --accent-line: color-mix(in oklab, var(--ok-gray-1000) 32%, transparent); /* 입력칸 포커스 선 (메모킹과 같은 값) */
+  --sep: color-mix(in oklab, var(--ok-gray-1000) 8%, transparent);
   --brand: var(--ok-yellow-300);
   --ok-text: var(--ok-green-700);
-  --err-text: var(--ok-red-700);
+  --err-text: var(--ok-red-800);
   --focus-ring: var(--ok-gray-950);
   /* 창 가장자리(10px) 안에서 끝나는 그림자 — 넘치면 잘린 회색 띠가 창 밖 화면과 어울리지 않았다 */
-  --shadow: 0 2px 10px color-mix(in oklab, var(--ok-gray-1000) 14%, transparent), 0 0 0 1px color-mix(in oklab, var(--ok-gray-1000) 6%, transparent);
-  --shadow-pop: 0 3px 8px color-mix(in oklab, var(--ok-gray-1000) 18%, transparent);
+  --shadow: 0 2px 10px color-mix(in oklab, var(--ok-gray-1000) 12%, transparent), 0 0 0 1px color-mix(in oklab, var(--ok-gray-1000) 4%, transparent);
+  --shadow-pop: 0 3px 8px color-mix(in oklab, var(--ok-gray-1000) 16%, transparent);
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --surface: var(--ok-gray-950);
     --card: var(--ok-gray-900);
     --panel-top: var(--ok-gray-950);
-    --glow-a: color-mix(in oklab, var(--ok-yellow-300) 5%, transparent);
-    --glow-b: color-mix(in oklab, var(--ok-blue-400) 10%, transparent);
+    --glow-a: color-mix(in oklab, var(--ok-yellow-300) 8%, transparent);
+    --glow-b: color-mix(in oklab, var(--ok-blue-400) 8%, transparent);
     --rim: color-mix(in oklab, var(--ok-gray-0) 8%, transparent);
-    --field-line: color-mix(in oklab, var(--ok-gray-0) 6%, transparent);
+    --field-line: color-mix(in oklab, var(--ok-gray-0) 4%, transparent);
     --text: var(--ok-gray-50);
     --muted: var(--ok-gray-400);
-    --line: color-mix(in oklab, var(--ok-gray-0) 14%, transparent);
+    --line: color-mix(in oklab, var(--ok-gray-0) 12%, transparent);
     --fill-tab: color-mix(in oklab, var(--ok-gray-0) 8%, transparent);
     --sel: color-mix(in oklab, var(--ok-gray-0) 12%, transparent);
-    --accent-line: color-mix(in oklab, var(--ok-gray-0) 40%, transparent);
+    --accent-line: color-mix(in oklab, var(--ok-gray-0) 32%, transparent);
     --sep: color-mix(in oklab, var(--ok-gray-0) 8%, transparent);
-    --ok-text: var(--ok-green-300);
-    --err-text: var(--ok-red-300);
+    --ok-text: var(--ok-green-200);
+    --err-text: var(--ok-red-400);
     --focus-ring: var(--ok-gray-0);
-    --shadow: 0 2px 10px color-mix(in oklab, var(--ok-gray-1000) 45%, transparent), 0 0 0 1px color-mix(in oklab, var(--ok-gray-0) 10%, transparent);
-    --shadow-pop: 0 3px 8px color-mix(in oklab, var(--ok-gray-1000) 50%, transparent);
+    --shadow: 0 2px 10px color-mix(in oklab, var(--ok-gray-1000) 48%, transparent), 0 0 0 1px color-mix(in oklab, var(--ok-gray-0) 8%, transparent);
+    --shadow-pop: 0 3px 8px color-mix(in oklab, var(--ok-gray-1000) 48%, transparent);
   }
 }
 
@@ -89,7 +90,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 /* 입력칸: 판 위의 흰 알약 (여러 줄이 되면 둥근 사각으로 늘어난다) — 글자는 결과 줄 아이콘과 같은 세로선에서 시작 */
 .magic-top { display: flex; align-items: flex-start; gap: 12px; margin: 4px 12px 8px; padding: 9px 12px 9px 16px; border-radius: 24px; background: var(--card); box-shadow: none; transition: box-shadow 0.15s ease-out; }
 .magic-top:focus-within { box-shadow: inset 0 0 0 1.5px var(--accent-line); }
-.magic-input { flex: 1; min-width: 0; display: block; height: 30px; max-height: 174px; padding: 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; color: var(--text); font: inherit; font-size: 20px; font-weight: 500; line-height: 30px; caret-color: var(--ok-yellow-400); }
+.magic-input { flex: 1; min-width: 0; display: block; height: 30px; max-height: 174px; padding: 0; border: 0; outline: none; resize: none; overflow-y: auto; background: transparent; color: var(--text); font: inherit; font-size: 20px; font-weight: 500; line-height: 30px; caret-color: var(--ok-yellow-300); }
 .magic-input::placeholder { color: var(--muted); }
 .magic-clear { flex: none; width: 26px; height: 26px; margin-top: 2px; border: 0; border-radius: 50%; background: var(--fill-tab); color: var(--muted); font-size: 12px; cursor: pointer; }
 .magic-clear:hover { color: var(--text); }
@@ -104,15 +105,15 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 @media (prefers-color-scheme: dark) { .magic-pill { mix-blend-mode: screen; } } /* 어두운 카드 위에서는 곱하면 사라진다 — 밝게 겹친다 */
 
 /* 기능마다 색 하나 — 아래 캡슐의 점 · 결과 머리말의 점이 같은 색 */
-[data-mod="notes"], [data-mod="memo"] { --mod: var(--ok-yellow-400); }
+[data-mod="notes"], [data-mod="memo"] { --mod: var(--ok-yellow-300); }
 [data-mod="schedule"] { --mod: var(--ok-green-500); }
-[data-mod="opms"] { --mod: var(--ok-blue-500); }
+[data-mod="opms"] { --mod: var(--ok-blue-400); }
 [data-mod="apps"] { --mod: var(--ok-orange-400); }
 [data-mod="files"] { --mod: var(--ok-teal-500); }
 [data-mod="calc"] { --mod: var(--ok-green-500); }
 [data-mod="web"], [data-mod="site"] { --mod: var(--ok-pink-600); }
 [data-mod="ai"] { --mod: var(--ok-violet-600); }
-[data-mod="rest"] { --mod: var(--ok-gray-500); } /* "다른 n건 더 보기" */
+[data-mod="rest"] { --mod: var(--ok-gray-550); } /* "다른 n건 더 보기" */
 
 .magic-section { display: flex; align-items: center; gap: 6px; padding: 10px 16px 4px; color: var(--muted); font-size: 13.5px; font-weight: 700; }
 .magic-section::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mod); }
@@ -187,7 +188,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .magic-chip.dragging { position: relative; z-index: 2; box-shadow: var(--shadow-pop); background: var(--surface); cursor: grabbing; transition: box-shadow 0.15s, background 0.15s; }
 .magic-modules.sorting, .magic-modules.sorting .magic-chip { cursor: grabbing; }
 .magic-chip .chip-dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; transition: background 0.15s, box-shadow 0.15s; }
-.magic-chip.on { border-color: transparent; background: var(--card); color: var(--text); box-shadow: 0 1px 2px color-mix(in oklab, var(--ok-gray-1000) 6%, transparent); }
+.magic-chip.on { border-color: transparent; background: var(--card); color: var(--text); box-shadow: 0 1px 2px color-mix(in oklab, var(--ok-gray-1000) 4%, transparent); }
 .magic-chip.on .chip-dot { background: var(--mod); box-shadow: none; }
 .magic-chip:not(.on) { text-decoration: line-through; }
 .magic-chip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
