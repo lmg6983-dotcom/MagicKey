@@ -15,12 +15,12 @@
   --ok-purple-200: #dbcaff; --ok-purple-600: #8558c5;
   --ok-pink-200: #ffbfd7; --ok-pink-600: #ba4179;
   --ok-yellow-100: #ffeaab; --ok-yellow-300: #ffcc00; --ok-yellow-500: #c6a000; --ok-yellow-800: #645000;
-  --ok-paper-yellow: #f4edd7; --ok-paper-yellow-bar: #ede3c2; --ok-paper-yellow-chip: #c4a953; --ok-paper-yellow-dark: #342d19; --ok-paper-yellow-dark-bar: #463c20; --ok-paper-yellow-dark-chip: #a89044;
-  --ok-paper-green: #dff3e2; --ok-paper-green-bar: #cfecd3; --ok-paper-green-chip: #76be86; --ok-paper-green-dark: #213324; --ok-paper-green-dark-bar: #2c4431; --ok-paper-green-dark-chip: #63a471;
-  --ok-paper-pink: #fee5ee; --ok-paper-pink-bar: #fdd7e4; --ok-paper-pink-chip: #e28dae; --ok-paper-pink-dark: #3c262f; --ok-paper-pink-dark-bar: #50333e; --ok-paper-pink-dark-chip: #c27895;
-  --ok-paper-purple: #f0e9ff; --ok-paper-purple-bar: #e7ddfd; --ok-paper-purple-chip: #b59be6; --ok-paper-purple-dark: #302a3d; --ok-paper-purple-dark-bar: #413851; --ok-paper-purple-dark-chip: #9c84c7;
-  --ok-paper-blue: #deefff; --ok-paper-blue-bar: #cbe7ff; --ok-paper-blue-chip: #6cb2ec; --ok-paper-blue-dark: #1f303e; --ok-paper-blue-dark-bar: #284053; --ok-paper-blue-dark-chip: #5a98cb;
-  --ok-paper-gray: #f0ece7; --ok-paper-gray-bar: #e7e2db; --ok-paper-gray-chip: #b2aa9d; --ok-paper-gray-dark: #2f2d2a; --ok-paper-gray-dark-bar: #3f3d38; --ok-paper-gray-dark-chip: #999185;
+  --ok-paper-yellow: #ffefae; --ok-paper-yellow-bar: #fee47c; --ok-paper-yellow-chip: #ccb034; --ok-paper-yellow-dark: #3c3207; --ok-paper-yellow-dark-bar: #4d420e; --ok-paper-yellow-dark-chip: #bba442;
+  --ok-paper-green: #c9fed3; --ok-paper-green-bar: #b7f7c3; --ok-paper-green-chip: #68ca80; --ok-paper-green-dark: #193b22; --ok-paper-green-dark-bar: #244d2e; --ok-paper-green-dark-chip: #69ba7c;
+  --ok-paper-pink: #ffe7ef; --ok-paper-pink-bar: #ffd9e6; --ok-paper-pink-chip: #f589b6; --ok-paper-pink-dark: #4a2534; --ok-paper-pink-dark-bar: #5f3244; --ok-paper-pink-dark-chip: #df84a8;
+  --ok-paper-purple: #f1ebff; --ok-paper-purple-bar: #e9deff; --ok-paper-purple-chip: #bf9bfc; --ok-paper-purple-dark: #382b4d; --ok-paper-purple-dark-bar: #483962; --ok-paper-purple-dark-chip: #b093e5;
+  --ok-paper-blue: #e1f1ff; --ok-paper-blue-bar: #cfe8ff; --ok-paper-blue-chip: #61b9ff; --ok-paper-blue-dark: #15364f; --ok-paper-blue-dark-bar: #1e4665; --ok-paper-blue-dark-chip: #5eaceb;
+  --ok-paper-gray: #f2eee7; --ok-paper-gray-bar: #e9e4db; --ok-paper-gray-chip: #b8b0a3; --ok-paper-gray-dark: #35322e; --ok-paper-gray-dark-bar: #45423c; --ok-paper-gray-dark-chip: #aba397;
 }
 
 :root {
