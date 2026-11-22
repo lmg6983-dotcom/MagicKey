@@ -233,12 +233,12 @@ function row(r, index, query) {
   const acts = el('span', 'acts');
   acts.setAttribute('role', 'toolbar');
   actionsFor(r).forEach((a, k) => {
-    const b = el('button', `act-btn${a.text ? ' act-text' : ''}`);
+    const b = el('button', 'act-btn');
     b.type = 'button';
     b.tabIndex = -1;
     b.title = a.key ? `${a.label} (${a.key})` : a.label;
     b.setAttribute('aria-label', a.label);
-    if (!a.text) b.append(svg(a.id.startsWith('copy') && a.id !== 'copyPath' ? 'copy' : a.id));
+    b.append(actionIcon(r, a));
     b.append(el('span', 'act-label', a.label));
     b.addEventListener('mousedown', (e) => e.preventDefault());
     b.addEventListener('click', (e) => {

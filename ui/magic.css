@@ -175,8 +175,8 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .act-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .act-btn .act-label { display: none; }
 .act-btn.on { padding: 0 11px 0 9px; background: var(--brand); color: var(--ok-gray-950); }
-.act-btn.on .act-label, .act-btn.act-text .act-label { display: inline; }
-.act-btn.act-text { padding: 0 8px; font-weight: 600; }
+.act-btn.on .act-label { display: inline; } /* 할 일은 모두 그림 단추 — 고른 단추만 이름이 함께 (이름은 늘 마우스 올림 · 읽어 주기에) */
+.act-btn svg.brand { fill: currentColor; stroke: none; } /* 사이트 로고는 채운 그림 */
 .act-btn:not(.on):hover { background: var(--fill-tab); color: var(--text); }
 
 .magic-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 8px 28px 10px 28px; border-top: 1px solid var(--sep); }

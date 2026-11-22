@@ -133,7 +133,7 @@ function rowEl(r, i) {
       b.dataset.action = a.id;
       b.title = a.key ? `${a.label} (${a.key})` : a.label;
       b.setAttribute('aria-label', a.label);
-      b.append(svg(a.id === 'openMemo' ? 'open' : a.id), el('span', 'act-label', a.label));
+      b.append(actionIcon(r, a), el('span', 'act-label', a.label));
       b.addEventListener('mousedown', (e) => e.preventDefault());
       b.addEventListener('click', () => run(i, k));
       acts.append(b);
