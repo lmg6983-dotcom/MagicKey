@@ -2,10 +2,10 @@
    모양은 메모킹 · MagicSystem 과 한 벌: One UI 9.5 (크게 둥근 판 · 무채색 · 고른 줄은 연노랑 알약) — 메모킹 app/styles/base.css 토큰과 같은 값 */
 /* OKLab 팔레트 — 화면의 모든 색은 여기서 고른다 (메모킹 · MagicKey · MagicSystem 같은 값)
    OKLCH 좌표(밝기 L · 채도 C · 색상 h)에서 뽑아 sRGB 로 적었다. 반투명은 color-mix(in oklab, 토큰 N%, transparent)
-   꼭 필요한 것만: 무채색 10 · 색 22 (노랑 300 = 브랜드 #ffcc00) · 메모 종이 6색 × (바탕 · 머리줄 · 점) × 밝은/어두운
+   꼭 필요한 것만: 무채색 11 · 색 22 (노랑 300 = 브랜드 #ffcc00) · 메모 종이 6색 × (바탕 · 머리줄 · 점) × 밝은/어두운
    반투명은 검정 · 흰색 10단계(4 8 12 16 24 32 48 64 80 90%), 색은 5단계(8 16 32 48 80%) */
 :root {
-  --ok-gray-0: #ffffff; --ok-gray-50: #f5f5f5; --ok-gray-100: #ebebeb; --ok-gray-200: #d4d4d4; --ok-gray-400: #9e9e9e; --ok-gray-550: #737373; --ok-gray-850: #242424; --ok-gray-900: #191919; --ok-gray-950: #0e0e0e; --ok-gray-1000: #000000;
+  --ok-gray-0: #ffffff; --ok-gray-50: #f5f5f5; --ok-gray-100: #ebebeb; --ok-gray-200: #d4d4d4; --ok-gray-400: #9e9e9e; --ok-gray-550: #737373; --ok-gray-600: #696969; --ok-gray-850: #242424; --ok-gray-900: #191919; --ok-gray-950: #0e0e0e; --ok-gray-1000: #000000;
   --ok-red-100: #ffdfdc; --ok-red-400: #ff716b; --ok-red-600: #d12830; --ok-red-800: #880a16;
   --ok-orange-400: #fa7c1f;
   --ok-green-200: #a6e6b6; --ok-green-500: #00a855; --ok-green-700: #007137;
@@ -15,12 +15,12 @@
   --ok-purple-200: #dbcaff; --ok-purple-600: #8558c5;
   --ok-pink-200: #ffbfd7; --ok-pink-600: #ba4179;
   --ok-yellow-100: #ffeaab; --ok-yellow-300: #ffcc00; --ok-yellow-500: #c6a000; --ok-yellow-800: #645000;
-  --ok-paper-yellow: #f4edd7; --ok-paper-yellow-bar: #ede3c2; --ok-paper-yellow-chip: #c4a953; --ok-paper-yellow-dark: #342d19; --ok-paper-yellow-dark-bar: #463c20; --ok-paper-yellow-dark-chip: #a89044;
-  --ok-paper-green: #dff3e2; --ok-paper-green-bar: #cfecd3; --ok-paper-green-chip: #76be86; --ok-paper-green-dark: #213324; --ok-paper-green-dark-bar: #2c4431; --ok-paper-green-dark-chip: #63a471;
-  --ok-paper-pink: #fee5ee; --ok-paper-pink-bar: #fdd7e4; --ok-paper-pink-chip: #e28dae; --ok-paper-pink-dark: #3c262f; --ok-paper-pink-dark-bar: #50333e; --ok-paper-pink-dark-chip: #c27895;
-  --ok-paper-purple: #f0e9ff; --ok-paper-purple-bar: #e7ddfd; --ok-paper-purple-chip: #b59be6; --ok-paper-purple-dark: #302a3d; --ok-paper-purple-dark-bar: #413851; --ok-paper-purple-dark-chip: #9c84c7;
-  --ok-paper-blue: #deefff; --ok-paper-blue-bar: #cbe7ff; --ok-paper-blue-chip: #6cb2ec; --ok-paper-blue-dark: #1f303e; --ok-paper-blue-dark-bar: #284053; --ok-paper-blue-dark-chip: #5a98cb;
-  --ok-paper-gray: #f0ece7; --ok-paper-gray-bar: #e7e2db; --ok-paper-gray-chip: #b2aa9d; --ok-paper-gray-dark: #2f2d2a; --ok-paper-gray-dark-bar: #3f3d38; --ok-paper-gray-dark-chip: #999185;
+  --ok-paper-yellow: #ffefae; --ok-paper-yellow-bar: #fee47c; --ok-paper-yellow-chip: #ccb034; --ok-paper-yellow-dark: #3c3207; --ok-paper-yellow-dark-bar: #4d420e; --ok-paper-yellow-dark-chip: #bba442;
+  --ok-paper-green: #c9fed3; --ok-paper-green-bar: #b7f7c3; --ok-paper-green-chip: #68ca80; --ok-paper-green-dark: #193b22; --ok-paper-green-dark-bar: #244d2e; --ok-paper-green-dark-chip: #69ba7c;
+  --ok-paper-pink: #ffe7ef; --ok-paper-pink-bar: #ffd9e6; --ok-paper-pink-chip: #f589b6; --ok-paper-pink-dark: #4a2534; --ok-paper-pink-dark-bar: #5f3244; --ok-paper-pink-dark-chip: #df84a8;
+  --ok-paper-purple: #f1ebff; --ok-paper-purple-bar: #e9deff; --ok-paper-purple-chip: #bf9bfc; --ok-paper-purple-dark: #382b4d; --ok-paper-purple-dark-bar: #483962; --ok-paper-purple-dark-chip: #b093e5;
+  --ok-paper-blue: #e1f1ff; --ok-paper-blue-bar: #cfe8ff; --ok-paper-blue-chip: #61b9ff; --ok-paper-blue-dark: #15364f; --ok-paper-blue-dark-bar: #1e4665; --ok-paper-blue-dark-chip: #5eaceb;
+  --ok-paper-gray: #f2eee7; --ok-paper-gray-bar: #e9e4db; --ok-paper-gray-chip: #b8b0a3; --ok-paper-gray-dark: #35322e; --ok-paper-gray-dark-bar: #45423c; --ok-paper-gray-dark-chip: #aba397;
 }
 
 :root {
@@ -32,11 +32,11 @@
   --rim: color-mix(in oklab, var(--ok-gray-0) 90%, transparent);
   --field-line: color-mix(in oklab, var(--ok-gray-1000) 4%, transparent);
   --text: var(--ok-gray-900);
-  --muted: var(--ok-gray-550);
+  --muted: var(--ok-gray-600); /* 판(#f5f5f5) 위에서도 4.5:1 넘게 */
   --line: var(--ok-gray-100);
   --fill-tab: color-mix(in oklab, var(--ok-gray-1000) 4%, transparent);
   --sel: var(--ok-gray-100); /* 고른 줄: 무채색 (메모킹과 같게 — 노랑은 고른 줄의 주요 동작 단추에만) */
-  --accent-line: color-mix(in oklab, var(--ok-gray-1000) 32%, transparent); /* 입력칸 포커스 선 (메모킹과 같은 값) */
+  --accent-line: color-mix(in oklab, var(--ok-gray-1000) 48%, transparent); /* 입력칸 포커스 선 (메모킹과 같은 값) */
   --sep: color-mix(in oklab, var(--ok-gray-1000) 8%, transparent);
   --brand: var(--ok-yellow-300);
   --ok-text: var(--ok-green-700);
@@ -60,7 +60,7 @@
     --line: color-mix(in oklab, var(--ok-gray-0) 12%, transparent);
     --fill-tab: color-mix(in oklab, var(--ok-gray-0) 8%, transparent);
     --sel: color-mix(in oklab, var(--ok-gray-0) 12%, transparent);
-    --accent-line: color-mix(in oklab, var(--ok-gray-0) 32%, transparent);
+    --accent-line: color-mix(in oklab, var(--ok-gray-0) 48%, transparent);
     --sep: color-mix(in oklab, var(--ok-gray-0) 8%, transparent);
     --ok-text: var(--ok-green-200);
     --err-text: var(--ok-red-400);
@@ -175,8 +175,8 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 .act-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .act-btn .act-label { display: none; }
 .act-btn.on { padding: 0 11px 0 9px; background: var(--brand); color: var(--ok-gray-950); }
-.act-btn.on .act-label, .act-btn.act-text .act-label { display: inline; }
-.act-btn.act-text { padding: 0 8px; font-weight: 600; }
+.act-btn.on .act-label { display: inline; } /* 할 일은 모두 그림 단추 — 고른 단추만 이름이 함께 (이름은 늘 마우스 올림 · 읽어 주기에) */
+.act-btn svg.brand { fill: currentColor; stroke: none; } /* 사이트 로고는 채운 그림 */
 .act-btn:not(.on):hover { background: var(--fill-tab); color: var(--text); }
 
 .magic-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 8px 28px 10px 28px; border-top: 1px solid var(--sep); }
@@ -203,3 +203,12 @@ kbd { display: inline-block; min-width: 14px; padding: 0 4px; border-radius: 4px
   .mk-dots i { animation: none; opacity: 0.6; }
   .act-btn.done svg, .magic-flash, .mk-searching { animation: none; }
 }
+
+/* 브라우저가 그리는 곳도 메모킹과 같은 색 — 글 고른 자리 · 스크롤 막대 */
+::selection { background: color-mix(in srgb, var(--ok-yellow-300) 42%, transparent); }
+* { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--ok-gray-1000) 24%, transparent) transparent; }
+@media (prefers-color-scheme: dark) { * { scrollbar-color: color-mix(in oklab, var(--ok-gray-0) 24%, transparent) transparent; } }
+
+/* 검색칸의 지우기(×): 브라우저 기본 파랑 대신 앱의 흐린 선 × */
+input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; margin-left: 6px; background: var(--muted); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 7l10 10M17 7L7 17' stroke='black' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 7l10 10M17 7L7 17' stroke='black' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat; cursor: pointer; }
+input[type="search"]::-webkit-search-cancel-button:hover { background: var(--text-strong, var(--text)); }

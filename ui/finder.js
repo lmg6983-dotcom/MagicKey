@@ -86,8 +86,9 @@ function rebuild({ keep = false } = {}) {
     t.hidden = t.dataset.kind !== 'all' && !counts[t.dataset.kind] && t.dataset.kind !== kind; // 없는 종류 탭은 숨긴다
   }
   countEl.textContent = !query.trim() ? '' : total > all.length ? `${total.toLocaleString()}건 중 비슷한 ${all.length.toLocaleString()}건` : `${all.length.toLocaleString()}건`;
-  emptyEl.hidden = Boolean(view.length) || !query.trim();
-  if (loading && !view.length) emptyEl.replaceChildren(searching('찾는 중'));
+  emptyEl.hidden = Boolean(view.length);
+  if (!query.trim()) emptyEl.textContent = '이름 일부를 쓰면 메모 · 앱 · 폴더 · 파일을 함께 찾아요'; // 처음: 빈 표 대신 할 일을
+  else if (loading && !view.length) emptyEl.replaceChildren(searching('찾는 중'));
   else if (!view.length) emptyEl.textContent = `'${query.trim().slice(0, 40)}'와 맞는 것이 없어요`;
   draw();
   if (!keep) scroller.scrollTop = 0;
@@ -132,7 +133,7 @@ function rowEl(r, i) {
       b.dataset.action = a.id;
       b.title = a.key ? `${a.label} (${a.key})` : a.label;
       b.setAttribute('aria-label', a.label);
-      b.append(svg(a.id === 'openMemo' ? 'open' : a.id), el('span', 'act-label', a.label));
+      b.append(actionIcon(r, a), el('span', 'act-label', a.label));
       b.addEventListener('mousedown', (e) => e.preventDefault());
       b.addEventListener('click', () => run(i, k));
       acts.append(b);
