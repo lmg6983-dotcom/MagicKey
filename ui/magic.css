@@ -115,6 +115,7 @@ body { font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", system-u
 [data-mod="ai"] { --mod: var(--ok-violet-600); }
 [data-mod="rest"] { --mod: var(--ok-gray-550); } /* "다른 n건 더 보기" */
 
+.magic-gap { height: 8px; list-style: none; } /* 머리글 없는 줄을 앞 묶음과 떼어 따로 묶는다 (magic.js render) */
 .magic-section { display: flex; align-items: center; gap: 6px; padding: 10px 16px 4px; color: var(--muted); font-size: 13.5px; font-weight: 700; }
 .magic-section::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mod); }
 .magic-section.sub::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--mod); }
