@@ -317,12 +317,19 @@ function render() {
     order.splice(order.indexOf('ai'), 1);
     order.splice(order.indexOf('site') + 1, 0, 'ai');
   }
+  // 묶음(캡슐)은 붙어 있는 줄들 — 머리글(메모 · 앱 · 파일 …)이 있는 묶음 바로 뒤에 머리글 없는 줄(OPMS 에서 찾기 · 더 보기 · 웹 · AI)이
+  //   오면 사이를 띄워 따로 묶는다 (예전: 메모 묶음 안에 구분 없이 섞여 들어갔다)
+  let prev = null; // 바로 앞 줄의 { mod, titled }
   for (const mod of order) {
+    const titled = (groups.get(mod) ?? []).some((it) => it.section);
     for (const it of groups.get(mod) ?? []) {
       if (it.row) {
+        if (prev && prev.mod !== mod && (prev.titled || titled)) nodes.push(gap());
+        prev = { mod, titled };
         nodes.push(row(it.row, rows.push(it.row) - 1, query));
         continue;
       }
+      prev = null;
       const li = el('li', it.section ? `magic-section${it.section[2] ? ' sub' : ''}` : `magic-note${it.onClick ? ' action' : ''}`);
       li.setAttribute('role', 'presentation');
       if (it.section) {
@@ -340,6 +347,12 @@ function render() {
   resultsEl.replaceChildren(pill, ...nodes);
   select(Math.min(selected, Math.max(0, rows.length - 1)), false, false);
   fit();
+}
+
+function gap() {
+  const li = el('li', 'magic-gap');
+  li.setAttribute('role', 'presentation');
+  return li;
 }
 
 // 고른 줄 표시 하나가 줄 사이를 미끄러져 따라간다 (다시 그릴 때는 바로 그 자리에)
