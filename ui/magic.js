@@ -269,19 +269,28 @@ function render() {
   const note = (mod, text, onClick) => add(mod, { note: text, onClick });
   const put = (mod, r) => add(mod, { row: { mod, ...r } });
   if (query && res) {
-    if (res.newMemo) put('memo', { kind: 'new' }); // Enter 로 바로 저장
-    if (res.schedule) put('schedule', { kind: 'remind', ...res.schedule }); // 내일 3시 치과 → 메모킹 일정 (일정 탭 빠른 추가와 같게, 일정 캡슐)
+    // 모든 묶음에 머리글 (머리글 없는 줄이 앞 묶음에 붙어 어느 기능인지 갈리지 않던 것)
+    if (res.newMemo) {
+      section('memo', '새 메모');
+      put('memo', { kind: 'new' }); // Enter 로 바로 저장
+    }
+    if (res.schedule) {
+      section('schedule', '일정');
+      put('schedule', { kind: 'remind', ...res.schedule }); // 내일 3시 치과 → 메모킹 일정 (일정 탭 빠른 추가와 같게, 일정 캡슐)
+    }
     if (res.opms) {
       const a = auto.query === query ? auto : null;
+      section('opms', 'OPMS', a?.cases.length ?? 0); // 찾은 사건이 없어도 'OPMS 에서 찾기' 위에
       if (a?.cases.length) {
-        section('opms', 'OPMS', a.cases.length);
         a.cases.forEach((c) => put('opms', { kind: 'case', ...c }));
       } else if (a?.loading) note('opms', searching('OPMS 에서 찾는 중'));
       else if (a?.error) note('opms', a.error);
       put('opms', { kind: 'opms', more: a && a.total > a.cases.length ? a.total - a.cases.length : 0 });
     }
-    if (res.calc) put('calc', { ...res.calc, text: query });
-    if (res.site) add('site', { row: { kind: 'site', mod: 'site', url: res.site } });
+    if (res.calc) {
+      section('calc', '계산');
+      put('calc', { ...res.calc, text: query });
+    }
     if (res.memos.length) {
       section('notes', '메모', res.memos.length);
       res.memos.forEach((m) => put('notes', { kind: 'memo', ...m }));
@@ -290,33 +299,40 @@ function render() {
       section('apps', '앱', res.apps.length);
       res.apps.forEach((a) => put('apps', { kind: 'app', ...a }));
     }
-    if (res.folders.length) {
-      section('files', '폴더', res.folders.length);
-      res.folders.forEach((f) => put('files', { kind: 'folder', ...f }));
-    }
-    if (res.files.length) {
-      section('files', '파일', res.files.length, res.folders.length > 0);
-      res.files.forEach((f) => put('files', { kind: 'file', ...f }));
-    }
+    // 폴더 · 파일은 한 묶음 (폴더 먼저) — "다른 n건 더 보기"(모두 찾기 창) · 목록을 만드는 중 · 없어요 안내도 이 묶음에
     const more = res.more + res.memoMore;
-    if (more > 0) put('rest', { kind: 'more', count: more }); // 고르면 모두 찾기 창 (finder.js)
     const searched = isOn('apps') || isOn('files') || (sites.memo && isOn('notes'));
     const found = res.calc || res.site || res.memos.length || res.apps.length || res.folders.length || res.files.length;
-    if (searched && !res.indexed) note('rest', res.building ? searching('프로그램 · 파일 목록을 처음 만드는 중이에요. 잠시 뒤 찾아져요') : '프로그램 · 파일 목록이 비어 있어요');
-    else if (searched && !found) note('rest', `'${query.slice(0, 30)}'와 맞는 ${sites.memo && isOn('notes') ? '메모 · ' : ''}앱 · 파일이 없어요`);
+    const filesNote = searched && !res.indexed ? (res.building ? searching('프로그램 · 파일 목록을 처음 만드는 중이에요. 잠시 뒤 찾아져요') : '프로그램 · 파일 목록이 비어 있어요')
+      : searched && !found ? `'${query.slice(0, 30)}'와 맞는 ${sites.memo && isOn('notes') ? '메모 · ' : ''}앱 · 파일이 없어요` : null;
+    if (res.folders.length || res.files.length || more > 0 || filesNote) {
+      section('files', '폴더 · 파일', res.folders.length + res.files.length);
+      res.folders.forEach((f) => put('files', { kind: 'folder', ...f }));
+      res.files.forEach((f) => put('files', { kind: 'file', ...f }));
+      if (more > 0) put('files', { kind: 'more', count: more }); // 고르면 모두 찾기 창 (finder.js)
+      if (filesNote) note('files', filesNote);
+    }
+    // 웹: 주소를 쳤으면 '사이트 열기' 가 맨 위 (이 묶음은 계산 바로 뒤로 — 아래 order), 그 아래 웹에서 찾기
+    if (res.site || isOn('web')) section('web', '웹');
+    if (res.site) put('web', { kind: 'site', url: res.site });
     if (isOn('web')) put('web', { kind: 'web', sites: sites.web });
-    if (isOn('ai')) put('ai', { kind: 'ai', sites: sites.ai });
+    if (isOn('ai')) {
+      section('ai', 'AI');
+      put('ai', { kind: 'ai', sites: sites.ai });
+    }
     if (![...groups.values()].some((g) => g.some((it) => it.row)) && !searched) note('rest', `'${query.slice(0, 30)}'와 맞는 결과가 없어요`);
   } else if (sites.notice) note('top', sites.notice, () => invoke('hotkey_open'));
 
-  // 순서: 캡슐 순서 · 사이트 열기는 계산 바로 뒤 · 남은 건수와 '없어요' 안내는 웹 검색 바로 위 · 묻는 글이면 AI 를 사이트 다음으로
+  // 순서: 캡슐 순서 · 주소를 쳤으면 웹 묶음(사이트 열기)은 계산 바로 뒤 · '결과가 없어요' 는 웹 바로 위 · 묻는 글이면 AI 를 그 자리 다음으로
   const order = ['top', ...shownModules().map((m) => m.id)];
-  order.splice(order.indexOf('calc') + 1, 0, 'site');
-  order.splice(order.includes('web') ? order.indexOf('web') : order.length, 0, 'rest');
-  if (res?.question && order.includes('ai')) {
-    order.splice(order.indexOf('ai'), 1);
-    order.splice(order.indexOf('site') + 1, 0, 'ai');
-  }
+  if (!order.includes('web')) order.push('web'); // 웹 캡슐을 꺼도 주소를 치면 사이트 열기는 보인다
+  order.splice(order.indexOf('web'), 0, 'rest');
+  const moveAfter = (id, after) => {
+    order.splice(order.indexOf(id), 1);
+    order.splice(order.indexOf(after) + 1, 0, id); // 뺀 뒤에 자리를 찾는다 (캡슐 순서를 바꿔 웹이 계산보다 앞이어도)
+  };
+  if (res?.site) moveAfter('web', 'calc');
+  if (res?.question && order.includes('ai')) moveAfter('ai', res?.site ? 'web' : 'calc');
   // 묶음(캡슐)은 붙어 있는 줄들 — 머리글(메모 · 앱 · 파일 …)이 있는 묶음 바로 뒤에 머리글 없는 줄(OPMS 에서 찾기 · 더 보기 · 웹 · AI)이
   //   오면 사이를 띄워 따로 묶는다 (예전: 메모 묶음 안에 구분 없이 섞여 들어갔다)
   let prev = null; // 바로 앞 줄의 { mod, titled }
