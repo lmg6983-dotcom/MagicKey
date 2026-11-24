@@ -212,7 +212,7 @@ function row(r, index, query) {
   } else if (r.kind === 'memo') {
     ico.append(svg(r.locked ? 'lock' : 'memo'));
     t.append(highlighted(r.title, query));
-    s.textContent = r.snippet;
+    s.append(highlighted(r.snippet, query)); // 본문에서 찾은 말도 굵게 (제목처럼)
     s.title = r.snippet;
   } else if (r.kind === 'site') {
     ico.append(svg('web'));
@@ -305,12 +305,16 @@ function render() {
     const found = res.calc || res.site || res.memos.length || res.apps.length || res.folders.length || res.files.length;
     const filesNote = searched && !res.indexed ? (res.building ? searching('프로그램 · 파일 목록을 처음 만드는 중이에요. 잠시 뒤 찾아져요') : '프로그램 · 파일 목록이 비어 있어요')
       : searched && !found ? `'${query.slice(0, 30)}'와 맞는 ${sites.memo && isOn('notes') ? '메모 · ' : ''}앱 · 파일이 없어요` : null;
-    if (res.folders.length || res.files.length || more > 0 || filesNote) {
+    // 파일 캡슐을 껐으면 '폴더 · 파일' 머리글은 없다 — 더 보기는 메모 묶음 끝에, 없어요 안내는 머리글 없이
+    if (res.folders.length || res.files.length || (isOn('files') && (more > 0 || filesNote))) {
       section('files', '폴더 · 파일', res.folders.length + res.files.length);
       res.folders.forEach((f) => put('files', { kind: 'folder', ...f }));
       res.files.forEach((f) => put('files', { kind: 'file', ...f }));
       if (more > 0) put('files', { kind: 'more', count: more }); // 고르면 모두 찾기 창 (finder.js)
       if (filesNote) note('files', filesNote);
+    } else {
+      if (more > 0) put(res.memos.length ? 'notes' : 'rest', { kind: 'more', count: more });
+      if (filesNote) note('rest', filesNote);
     }
     // 웹: 주소를 쳤으면 '사이트 열기' 가 맨 위 (이 묶음은 계산 바로 뒤로 — 아래 order), 그 아래 웹에서 찾기
     if (res.site || isOn('web')) section('web', '웹');
