@@ -67,23 +67,57 @@ function actionIcon(r, a) {
   const name = { openMemo: 'open', copyMemo: 'copyText', copyExpr: 'copyText', copyRef: 'copyHash', copyIso: 'copyDate' }[a.id] ?? a.id;
   return svg(ICONS[name] ? name : 'open');
 }
+
+// 이미 받아 둔 실제 아이콘은 다시 그릴 때 선 그림을 거치지 않고 바로 붙인다 (스크롤 · 다시 그리기 깜빡임 방지)
+const iconState = new Map(); // src → true(받음) | false(없음)
+const ICON_CACHE_MAX = 2000;
+function rememberIcon(src, ok) {
+  if (iconState.size >= ICON_CACHE_MAX) iconState.clear();
+  iconState.set(src, ok);
+}
+
 /**
  * 앱 · 파일 · 폴더의 실제 아이콘 (탐색기에 보이는 그림 — app/src/shellicon.rs 가 fileicon:// 로 준다).
  * 그림이 오면 칸의 기능 색 바탕을 걷고 그림만, 못 얻으면(다른 OS · 지운 파일) 원래 선 그림 그대로.
  */
 function realIcon(ico, kind, path) {
-  ico.append(svg(kind));
   const conv = window.__TAURI__?.core?.convertFileSrc;
-  if (!path || !conv) return;
+  if (!path || !conv) {
+    ico.append(svg(kind));
+    return;
+  }
+  const src = conv(path, 'fileicon');
+  const cached = iconState.get(src);
+  if (cached === false) {
+    ico.append(svg(kind));
+    return;
+  }
+  if (cached === true) {
+    const img = new Image();
+    img.alt = '';
+    img.draggable = false;
+    img.onerror = () => {
+      iconState.delete(src);
+      ico.classList.remove('real');
+      ico.replaceChildren(svg(kind));
+    };
+    img.src = src;
+    ico.classList.add('real');
+    ico.append(img);
+    return;
+  }
+  ico.append(svg(kind));
   const img = new Image(); // 문서에 붙이기 전에 받아 두고, 다 받았을 때만 바꾼다 (깜빡이지 않게)
   img.alt = '';
   img.decoding = 'async';
   img.draggable = false;
   img.onload = () => {
+    rememberIcon(src, true);
     ico.replaceChildren(img);
     ico.classList.add('real');
   };
-  img.src = conv(path, 'fileicon');
+  img.onerror = () => rememberIcon(src, false);
+  img.src = src;
 }
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
