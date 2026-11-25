@@ -29,6 +29,8 @@ let seq = 0;
 let loading = false;
 const stats = new Map(); // path → { size, mtime }
 const asked = new Set();
+const rendered = new Map(); // index → 지금 DOM 에 붙어 있는 줄 (스크롤할 때 다시 만들지 않아 아이콘이 깜빡이지 않음)
+let drawRaf = 0;
 
 // ---------- 글 ----------
 function sizeLabel(n) {
@@ -55,6 +57,19 @@ const nameOf = (r) => (r.kind === 'memo' ? r.title || '제목 없음' : r.name);
 const whereOf = (r) => (r.kind === 'memo' ? '메모킹 메모' : r.path);
 const timeOf = (r) => (r.kind === 'memo' ? Date.parse(r.updated ?? '') || 0 : stats.get(r.path)?.mtime ?? 0);
 const sizeOf = (r) => (r.kind === 'file' ? stats.get(r.path)?.size ?? -1 : -1);
+
+function clearRows() {
+  rendered.clear();
+  listEl.replaceChildren();
+}
+
+function scheduleDraw() {
+  if (drawRaf) return;
+  drawRaf = requestAnimationFrame(() => {
+    drawRaf = 0;
+    draw();
+  });
+}
 
 // ---------- 목록 ----------
 function rebuild({ keep = false } = {}) {
@@ -90,8 +105,9 @@ function rebuild({ keep = false } = {}) {
   if (!query.trim()) emptyEl.textContent = '이름 일부를 쓰면 메모 · 앱 · 폴더 · 파일을 함께 찾아요'; // 처음: 빈 표 대신 할 일을
   else if (loading && !view.length) emptyEl.replaceChildren(searching('찾는 중'));
   else if (!view.length) emptyEl.textContent = `'${query.trim().slice(0, 40)}'와 맞는 것이 없어요`;
-  draw();
+  clearRows();
   if (!keep) scroller.scrollTop = 0;
+  draw();
   status();
 }
 
@@ -100,14 +116,52 @@ function draw() {
   const h = scroller.clientHeight;
   const from = Math.max(0, Math.floor(top / ROW_H) - 6);
   const to = Math.min(view.length, Math.ceil((top + h) / ROW_H) + 6);
-  const nodes = [];
+  for (const [i, node] of rendered) {
+    if (i < from || i >= to) {
+      node.remove();
+      rendered.delete(i);
+    }
+  }
+  const frag = document.createDocumentFragment();
   const need = [];
   for (let i = from; i < to; i++) {
-    nodes.push(rowEl(view[i], i));
+    if (!rendered.has(i)) {
+      const node = rowEl(view[i], i);
+      rendered.set(i, node);
+      frag.append(node);
+    }
     if (view[i].kind !== 'memo' && !asked.has(view[i].path)) need.push(view[i].path);
   }
-  listEl.replaceChildren(...nodes);
+  if (frag.childNodes.length) listEl.append(frag);
   if (need.length) loadStats(need);
+}
+
+function renderActs(row, r, i) {
+  row.querySelector('.acts')?.remove();
+  if (i !== selected) return;
+  const acts = el('span', 'acts');
+  actionsFor(r).forEach((a, k) => {
+    const b = el('button', `act-btn${k === activeAct ? ' on' : ''}`);
+    b.type = 'button';
+    b.tabIndex = -1;
+    b.dataset.action = a.id;
+    b.title = a.key ? `${a.label} (${a.key})` : a.label;
+    b.setAttribute('aria-label', a.label);
+    b.append(actionIcon(r, a), el('span', 'act-label', a.label));
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    b.addEventListener('click', () => run(i, k));
+    acts.append(b);
+  });
+  row.querySelector('.col-name').append(acts);
+}
+
+function syncStats() {
+  for (const [i, row] of rendered) {
+    const r = view[i];
+    if (!r || r.kind === 'memo') continue;
+    row.querySelector('.col-size').textContent = r.kind === 'file' ? sizeLabel(stats.get(r.path)?.size) : '';
+    row.querySelector('.col-time').textContent = timeLabel(timeOf(r));
+  }
 }
 
 function rowEl(r, i) {
@@ -124,27 +178,12 @@ function rowEl(r, i) {
   const label = el('span', 'nm');
   label.append(highlighted(nameOf(r), query));
   name.append(ico, label);
-  if (i === selected) {
-    const acts = el('span', 'acts');
-    actionsFor(r).forEach((a, k) => {
-      const b = el('button', `act-btn${k === activeAct ? ' on' : ''}`);
-      b.type = 'button';
-      b.tabIndex = -1;
-      b.dataset.action = a.id;
-      b.title = a.key ? `${a.label} (${a.key})` : a.label;
-      b.setAttribute('aria-label', a.label);
-      b.append(actionIcon(r, a), el('span', 'act-label', a.label));
-      b.addEventListener('mousedown', (e) => e.preventDefault());
-      b.addEventListener('click', () => run(i, k));
-      acts.append(b);
-    });
-    name.append(acts);
-  }
   const where = el('span', 'col-where', whereOf(r));
   where.title = r.path ?? '';
   const size = el('span', 'col-size', r.kind === 'file' ? sizeLabel(stats.get(r.path)?.size) : '');
   const time = el('span', 'col-time', timeLabel(timeOf(r)));
   row.append(name, where, size, time);
+  if (i === selected) renderActs(row, r, i);
   row.addEventListener('mousedown', (e) => {
     if (e.target.closest('.act-btn')) return;
     e.preventDefault();
@@ -175,13 +214,14 @@ function loadStats(paths) {
       for (const [p, st] of Object.entries(res)) stats.set(p, st);
     }
     if (sort && (sort.key === 'size' || sort.key === 'time')) rebuild({ keep: true });
-    else draw();
+    else syncStats();
   }, 40);
 }
 
 function select(i, { scroll = true } = {}) {
   if (!view.length) return;
   i = Math.max(0, Math.min(view.length - 1, i));
+  const prev = selected;
   if (i !== selected) activeAct = 0;
   selected = i;
   if (scroll) {
@@ -189,8 +229,18 @@ function select(i, { scroll = true } = {}) {
     if (y < scroller.scrollTop) scroller.scrollTop = y;
     else if (y + ROW_H > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = y + ROW_H - scroller.clientHeight;
   }
-  input.setAttribute('aria-activedescendant', `frow-${i}`);
   draw();
+  if (prev !== selected && rendered.has(prev)) {
+    const oldRow = rendered.get(prev);
+    oldRow.setAttribute('aria-selected', 'false');
+    oldRow.querySelector('.acts')?.remove();
+  }
+  if (rendered.has(selected)) {
+    const curRow = rendered.get(selected);
+    curRow.setAttribute('aria-selected', 'true');
+    renderActs(curRow, view[selected], selected);
+  }
+  input.setAttribute('aria-activedescendant', `frow-${i}`);
   status();
 }
 
@@ -273,7 +323,7 @@ input.addEventListener('keydown', (e) => {
   if (r && acts.length > 1 && ((e.key === 'ArrowRight' && (activeAct > 0 || input.selectionStart === input.value.length)) || (e.key === 'ArrowLeft' && activeAct > 0))) {
     e.preventDefault();
     activeAct = Math.max(0, Math.min(acts.length - 1, activeAct + (e.key === 'ArrowRight' ? 1 : -1)));
-    draw();
+    if (rendered.has(selected)) renderActs(rendered.get(selected), r, selected);
     status();
     return;
   }
@@ -317,8 +367,8 @@ head.addEventListener('click', (e) => {
   rebuild({ keep: true });
   input.focus();
 });
-scroller.addEventListener('scroll', () => requestAnimationFrame(draw), { passive: true });
-new ResizeObserver(() => draw()).observe(scroller);
+scroller.addEventListener('scroll', scheduleDraw, { passive: true });
+new ResizeObserver(scheduleDraw).observe(scroller);
 
 function start(q) {
   mods = q.mods ?? [];
